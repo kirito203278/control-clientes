@@ -6,10 +6,10 @@ Referencia de solo lectura: `~/Documentos/referencia/sistema-campanas-master` (n
 - [x] Fase 0 — Diseño: `docs/FASE0_esquema.sql`, `docs/FASE0_endpoints.md`. **Cerrada**: todas las preguntas respondidas.
 - [x] Fase 1 — BD, migraciones, seed, Docker, `.env` (ver COMO_EJECUTAR.md). Pendiente del usuario: probar con Docker real (aquí no había Docker; se probó con Postgres 18 embebido).
 - [x] Fase 2 — Auth, roles, equipo, baja de CM con migración (la reasignación de clientes sueltos va junto al router de clientes, Fase 3)
-- [~] Fase 3 — Panel CM (backend listo y probado; falta frontend)
-- [~] Fase 4 — Renovación, No renovados, notificaciones, jobs (backend listo y probado; falta frontend)
-- [~] Fase 5 — Ingresos (backend listo y probado; falta pantalla), recordatorios WhatsApp (backend listo; SIN importador: la cartera arranca de cero)
-- [~] Fase 6 — Reportes PDF/Excel + pruebas (backend listo y probado, incl. recálculo de fórmulas con LibreOffice; falta pantalla)
+- [x] Fase 3 — Panel CM (backend + frontend)
+- [x] Fase 4 — Renovación, No renovados, notificaciones, jobs (backend + frontend)
+- [x] Fase 5 — Ingresos (pantalla CM y admin), recordatorios WhatsApp (SIN importador: la cartera arranca de cero)
+- [x] Fase 6 — Reportes PDF/Excel + pruebas (incl. recálculo de fórmulas con LibreOffice) y vista previa en pantalla
 - [ ] Fase 7 — Producción (Render + Neon, cron-job.org, UptimeRobot)
 
 ## Decisiones (propuestas, pendientes de confirmar salvo indicación)

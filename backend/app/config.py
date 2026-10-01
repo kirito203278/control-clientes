@@ -22,7 +22,6 @@ class Settings(BaseSettings):
     tz: str = "America/Mexico_City"
     agencia_nombre: str = "INNquietus"
     scheduler_enabled: bool = True
-    static_dir: str = "app/static"
 
     # Reglas de negocio parametrizables (ver ESTADO.md)
     ciclo_dias: int = 30                  # duración de un ciclo

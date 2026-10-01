@@ -1,7 +1,9 @@
 from contextlib import asynccontextmanager
+from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 
 from app.config import get_settings
 from app.jobs.scheduler import start_scheduler, stop_scheduler
@@ -37,3 +39,16 @@ for r in (auth.router, usuarios.router, catalogos.router, admin.router, clientes
 @app.get("/api/health")
 def health():
     return {"ok": True}
+
+
+# --- Frontend (build de Vite en app/static). En desarrollo no existe y se usa `npm run dev` con proxy.
+STATIC = Path(__file__).parent / "static"
+if (STATIC / "index.html").exists():
+    @app.get("/{ruta:path}", include_in_schema=False)
+    def spa(ruta: str):
+        if ruta.startswith("api/"):
+            raise HTTPException(404, "No encontrado")
+        archivo = (STATIC / ruta).resolve()
+        if ruta and archivo.is_file() and STATIC.resolve() in archivo.parents:   # sin salirse de /static
+            return FileResponse(archivo)
+        return FileResponse(STATIC / "index.html")
