@@ -62,12 +62,15 @@ creando el primer admin **desde tu computadora, contra la base de Neon**:
 
 ```bash
 cd backend && python3 -m venv ../.venv && . ../.venv/bin/activate && pip install -r requirements.txt
-DATABASE_URL='postgresql://USUARIO:CLAVE@ep-xxxx.region.aws.neon.tech/neondb?sslmode=require' \
-JWT_SECRET=x JOBS_SECRET=x AES_KEY_B64="$(python3 -c "import secrets,base64;print(base64.b64encode(secrets.token_bytes(32)).decode())")" \
+
+export DATABASE_URL='postgresql://USUARIO:CLAVE@ep-xxxx.region.aws.neon.tech/neondb?sslmode=require'
+# El CLI no usa estos tres secretos, pero la configuración los exige válidos para cargar: valores desechables (NO son los de producción)
+export JWT_SECRET="$(python3 -c 'import secrets;print(secrets.token_urlsafe(40))')"
+export JOBS_SECRET="$(python3 -c 'import secrets;print(secrets.token_urlsafe(24))')"
+export AES_KEY_B64="$(python3 -c 'import secrets,base64;print(base64.b64encode(secrets.token_bytes(32)).decode())')"
+
 python -m app.cli crear-admin "Nombre Apellido"
 ```
-(Las tres variables de seguridad solo hacen falta para que la configuración cargue; el CLI no las usa. Aun así, el comando usa
-valores desechables: `JWT_SECRET=x` fallaría la validación, así que usa cadenas largas, p. ej. `$(python3 -c "import secrets;print(secrets.token_urlsafe(40))")`.)
 
 Imprime el usuario y una contraseña de 18 caracteres **una sola vez**. Entra a la app con ellos y, desde **Equipo**, da de alta al
 resto del equipo (CMs y otros admins; cada contraseña también se muestra una sola vez). Si algún día pierdes el acceso del único admin:
