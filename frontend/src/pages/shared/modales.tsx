@@ -94,60 +94,6 @@ export function EditarPaqueteModal({ p, esAdmin, onClose, onHecho }: { p: Paquet
   )
 }
 
-export function RenovarModal({ p, onClose, onHecho }: { p: Paquete; onClose: () => void; onHecho: (nuevoId: number) => void }) {
-  const cat = useCatalogos()
-  const [cambiar, setCambiar] = useState(false)
-  const [paqueteId, setPaqueteId] = useState(String(p.paquete_id))
-  const [tipoId, setTipoId] = useState(String(p.tipo_id))
-  const [costo, setCosto] = useState(String(p.costo))
-  const [error, setError] = useState<string | null>(null)
-  const actual = cat.paquetes.find((x) => x.id === p.paquete_id)
-  const elegido = cat.paquetes.find((x) => x.id === Number(paqueteId))
-  const nivel = actual && elegido && elegido.orden !== actual.orden ? (elegido.orden > actual.orden ? 'Subir de nivel' : 'Bajar de nivel') : null
-  const hoy = hoyIso()
-  const pagado = p.restante <= 0
-
-  const inicioNuevo = p.prorroga_hasta ? p.fecha_renovacion : (p.confirmado_en ?? hoy)
-
-  async function guardar() {
-    setError(null)
-    try {
-      const body = cambiar ? { paquete_id: Number(paqueteId), tipo_id: Number(tipoId), costo: Number(costo) } : {}
-      const r = await api.post<{ nuevo: Paquete }>(`/paquetes/${p.id}/renovar`, body)
-      onHecho(r.nuevo.id)
-    } catch (e) { setError(msg(e, 'No se pudo renovar')) }
-  }
-  return (
-    <Modal title={`Renovó · ${p.paquete}`} onClose={onClose} width={540}>
-      {!pagado && <div className="callout callout-bad">Este paquete aún debe <strong>{dinero(p.restante)}</strong>. Solo se registra la renovación cuando está pagado por completo; si no, solicita una prórroga o márcalo como no renovado.</div>}
-      <div className="callout callout-info">
-        Se cierra este ciclo y se abre uno nuevo con <strong>pagado en $0</strong>. El ciclo nuevo <strong>empieza el {fecha(inicioNuevo)}</strong>
-        {p.prorroga_hasta ? ' (se conserva la fecha de renovación original, por la prórroga)' : p.confirmado_en ? ' (el día que se confirmó la renovación)' : ' (hoy)'} y renueva
-        el <strong>{fecha(sumarDias(inicioNuevo, 30))}</strong> (30 días): la fecha se calcula sola. El ciclo anterior queda en el historial.
-      </div>
-      <div className="segmented light full" style={{ marginBottom: 14 }}>
-        <button className={!cambiar ? 'active' : ''} onClick={() => setCambiar(false)}>Mantener el mismo paquete</button>
-        <button className={cambiar ? 'active' : ''} onClick={() => setCambiar(true)}>Cambiar de paquete</button>
-      </div>
-      {cambiar ? (
-        <>
-          <div className="grid-2">
-            <div className="field"><label>Paquete nuevo</label>
-              <select value={paqueteId} onChange={(e) => setPaqueteId(e.target.value)}>{cat.paquetes.map((x) => <option key={x.id} value={x.id}>{x.nombre}</option>)}</select>
-              {nivel && <span className={`badge ${nivel === 'Subir de nivel' ? 'badge-good' : 'badge-warn'}`} style={{ marginTop: 6 }}>{nivel}</span>}</div>
-            <div className="field"><label>Tipo</label>
-              <select value={tipoId} onChange={(e) => setTipoId(e.target.value)}>{cat.tipos.map((x) => <option key={x.id} value={x.id}>{x.nombre}</option>)}</select></div>
-            <div className="field"><label>Nuevo costo</label><input type="number" min="0" step="0.01" value={costo} onChange={(e) => setCosto(e.target.value)} /></div>
-          </div>
-          <div className="callout callout-warn">Al cambiar de paquete, el conteo de renovaciones del paquete se reinicia en 0 y se usan los datos nuevos (paquete, tipo y costo).</div>
-        </>
-      ) : <p className="muted" style={{ marginTop: 0 }}>Mismo paquete, tipo y costo ({dinero(p.costo)}).</p>}
-      <ErrorTexto texto={error} />
-      <Botones onClose={onClose} onOk={guardar} okText="Renovar" disabled={!pagado || (cambiar && (!costo || !paqueteId || !tipoId))} />
-    </Modal>
-  )
-}
-
 export function ConfirmarRenovacionModal({ p, onClose, onHecho }: { p: Paquete; onClose: () => void; onHecho: (r: { renovado_automaticamente: number | null }) => void }) {
   const cat = useCatalogos()
   const [cambiar, setCambiar] = useState(false)
@@ -166,9 +112,9 @@ export function ConfirmarRenovacionModal({ p, onClose, onHecho }: { p: Paquete; 
     catch (e) { setError(msg(e, 'No se pudo confirmar')) }
   }
   return (
-    <Modal title={`Va a renovar · ${p.paquete}`} onClose={onClose} width={540}>
+    <Modal title={`Renovación · ${p.paquete}`} onClose={onClose} width={540}>
       <div className="callout callout-info" style={{ marginTop: 0 }}>
-        <strong>Hoy ({fecha(hoyIso())}) queda como el inicio del nuevo contrato.</strong>
+        <strong>{p.prorroga_hasta ? `Se conserva la fecha de renovación original (${fecha(p.fecha_renovacion)}).` : `Hoy (${fecha(hoyIso())}) queda como el inicio del nuevo contrato.`}</strong>
         {p.restante > 0 ? ` Aún debe ${dinero(p.restante)}: en cuanto pague completo se renueva solo.${enVentana ? ' No hay tolerancia de pago: a las 11:59 pm de hoy, si no ha pagado, se te preguntará por la prórroga.' : ' Si al terminar su contrato no ha pagado, se bloquea y se te preguntará por la prórroga.'}`
           : ' Ya está pagado: se renueva en este momento.'}
       </div>
@@ -190,7 +136,7 @@ export function ConfirmarRenovacionModal({ p, onClose, onHecho }: { p: Paquete; 
           <div className="callout callout-warn">El cambio se aplica cuando la renovación se concrete. Al cambiar de paquete, el conteo de renovaciones se reinicia en 0.</div>
         </>)}
       <ErrorTexto texto={error} />
-      <Botones onClose={onClose} onOk={guardar} okText="Confirmar que va a renovar" disabled={cambiar && (!costo || !paqueteId || !tipoId)} />
+      <Botones onClose={onClose} onOk={guardar} okText={p.restante <= 0 ? 'Renovar ahora' : 'Confirmar que va a renovar'} disabled={cambiar && (!costo || !paqueteId || !tipoId)} />
     </Modal>
   )
 }
