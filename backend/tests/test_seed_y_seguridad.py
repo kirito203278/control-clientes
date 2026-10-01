@@ -32,7 +32,7 @@ def test_contrasena_generada_18_caracteres_y_bcrypt():
 def test_seed(db, tmp_path):
     cred = tmp_path / "cred.txt"
     resumen = sembrar(db, credenciales_path=cred)
-    assert resumen == {"usuarios": 5, "clientes": 16}
+    assert resumen == {"usuarios": 5, "clientes": 31}
 
     texto = cred.read_text()
     for u in db.scalars(select(Usuario)):
@@ -44,7 +44,7 @@ def test_seed(db, tmp_path):
     assert "@" not in c.correo_fb_enc and decrypt_value(c.correo_fb_enc).endswith("@fb.ejemplo.test")
 
     assert db.scalar(select(func.count()).select_from(Cliente).where(Cliente.cm_id.is_(None))) == 1
-    assert db.scalar(select(func.count()).select_from(ArchivoNoRenovado)) == 4
+    assert db.scalar(select(func.count()).select_from(ArchivoNoRenovado)) == 6
     multi = db.scalars(select(Cliente).where(Cliente.nombre == "Dra. Mariana Vélez")).one()
     assert len(multi.paquetes) == 1
     ic = db.scalars(select(PaqueteCliente).join(Cliente).where(Cliente.nombre == "Imprenta Central")).one()

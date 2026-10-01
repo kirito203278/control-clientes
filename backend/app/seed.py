@@ -112,8 +112,9 @@ def sembrar(db: Session, credenciales_path: Path | None = CREDENCIALES_PATH) -> 
     ciclo(th, "Élite", "Dinamita", 4500, 30, anterior=th_viejo)
     ciclo(cliente(ana, "Estética Bella Vista"), "Básico", "Fantasma", 1200, 1, decision="si", pagos=[(600, -2)])
     ciclo(cliente(beto, "Gimnasio FuerzaMX"), "Estándar", "Normal", 2500, -2, estado="vencido")
-    ciclo(cliente(beto, "Café Tlalli"), "Básico", "Normal", 1500, -6, estado="vencido",
-          pagos=[(700, -5)], prorroga=(-2, 3))
+    cafe = ciclo(cliente(beto, "Café Tlalli"), "Básico", "Normal", 1500, -6, estado="vencido", decision="si",
+                 pagos=[(700, -5)], prorroga=(-2, 3))
+    cafe.confirmado_en = H - dt.timedelta(days=7)
     pl = cliente(beto, "Papelería El Lápiz")
     viejo = ciclo(pl, "Estándar", "Normal", 2500, -10, estado="renovado", decision="si",
                   pagos=[(2500, -12)])
@@ -134,6 +135,72 @@ def sembrar(db: Session, credenciales_path: Path | None = CREDENCIALES_PATH) -> 
     no_renovado(cliente(beto, "Abarrotes Doña Lucha"), 70, "Básico", "Normal", 1500)
     no_renovado(cliente(ana, "Refaccionaria Del Valle"), 370, "Básico", "Normal", 1500)
     ciclo(cliente(None, "Escuela de Baile Ritmo"), "Básico", "Normal", 1500, 7, por=admin)
+
+    def con_historial(cm, nombre, paquete, tp, costo, renov, previos=2, antes=None, **actual):
+        """Cliente con ciclos anteriores ya renovados y pagados (alimentan ingresos, reportes y tasa de renovación)."""
+        c = cliente(cm, nombre)
+        pq0, tp0, costo0 = antes or (paquete, tp, costo)
+        anterior = None
+        for k in range(previos, 0, -1):
+            r = renov - ciclo_dias * k
+            viejo = ciclo(c, pq0, tp0, costo0, r, estado="renovado", decision="si", pagos=[(costo0, r - 4)], anterior=anterior)
+            if anterior is not None:
+                db.add(Renovacion(ciclo_anterior_id=anterior.id, ciclo_nuevo_id=viejo.id, paquete_anterior_id=paq[pq0],
+                                  paquete_nuevo_id=paq[pq0], costo_anterior=Decimal(costo0), costo_nuevo=Decimal(costo0),
+                                  fecha=H + dt.timedelta(days=r - ciclo_dias), registrado_por=cm.id))
+            anterior = viejo
+        p = ciclo(c, paquete, tp, costo, renov, anterior=anterior, **actual)
+        if anterior is not None:
+            db.add(Renovacion(ciclo_anterior_id=anterior.id, ciclo_nuevo_id=p.id, paquete_anterior_id=paq[pq0],
+                              paquete_nuevo_id=paq[paquete], costo_anterior=Decimal(costo0), costo_nuevo=Decimal(costo),
+                              fecha=H + dt.timedelta(days=renov - ciclo_dias), registrado_por=cm.id))
+        return c, p
+
+    # ---- Más clientes para ver todas las pantallas (ana)
+    con_historial(ana, "Ferretería El Tornillo", "Estándar", "Normal", 2500, 9, previos=3, pagos=[(1000, -1)])
+    con_historial(ana, "Clínica Vital", "Élite", "Normal", 4500, 14, previos=2, antes=("Estándar", "Normal", 2500), pagos=[(4500, -2)])
+    con_historial(ana, "Librería Cervantes", "Básico", "Normal", 1500, 22, previos=1)
+    _, p_tq = con_historial(ana, "Taquería Los Compadres", "Básico", "Dinamita", 1800, 3, previos=2, decision="si", pagos=[(900, -1)])
+    p_tq.confirmado_en = H - dt.timedelta(days=1)                                  # confirmó que renueva, pero con otro paquete
+    p_tq.renovara_paquete_id, p_tq.renovara_tipo_id, p_tq.renovara_costo = paq["Estándar"], tipo["Dinamita"], Decimal(2500)
+    # ---- beto
+    con_historial(beto, "Óptica Visión Clara", "Estándar", "Normal", 2500, 6, previos=2)
+    _, p_bo = con_historial(beto, "Boutique Aurora", "Básico", "Fantasma", 1200, -1, previos=2, decision="si", pagos=[(400, -3)])
+    p_bo.confirmado_en = H - dt.timedelta(days=8)                                  # confirmó, no pagó: hoy toca prórroga o no renovó
+    con_historial(beto, "Lavandería Burbuja", "Básico", "Normal", 1500, 27, previos=3, pagos=[(1500, -3)])
+    _, p_ab = con_historial(beto, "Abarrotes La Esquina", "Estándar", "Normal", 2500, -3, previos=2, decision="si",
+                            pagos=[(1000, -2)], prorroga=(-1, 4))
+    p_ab.confirmado_en = H - dt.timedelta(days=4)                                  # prórroga corriendo con pago parcial
+    # ---- carla
+    con_historial(carla, "Estudio Fotográfico Lumen", "Élite", "Normal", 4500, 12, previos=2)
+    con_historial(carla, "Pastelería Dulce Hogar", "Básico", "Normal", 1500, 5, previos=1, decision="no", pagos=[(1500, -5)])
+    con_historial(carla, "Dentista Sonríe", "Estándar", "Normal", 2500, -2, previos=2, pagos=[(2500, -4)])   # pagó y falta decidir
+    con_historial(carla, "Cafetería Aroma", "Básico", "Normal", 1500, 18, previos=2, pagos=[(500, -2)])
+    con_historial(carla, "Spa Zen", "Élite", "Dinamita", 4500, 28, previos=2)
+    no_renovado(cliente(ana, "Zapatería El Paso"), 30, "Básico", "Normal", 1500)
+    no_renovado(cliente(carla, "Papelería Escolar"), 45, "Estándar", "Normal", 2500)
+
+    # ---- Mensaje al cliente ya listo para Imprenta Central (su prórroga venció sin pago completo)
+    from app import bitacora
+    from app.jobs import tareas
+    from app.services import notificar, recordatorios
+    recordatorios.crear_para_paquete(db, p_ic, beto.id)
+    notificar.crear(db, ic, "prorroga_vencida",
+                    "Imprenta Central: la prórroga del paquete Estándar venció sin pago completo (faltan $1,000.00). "
+                    "El cliente pasó a No renovados. Tienes listo el mensaje para el cliente: envíalo y márcalo como enviado.",
+                    f"prorroga-venc:{p_ic.id}:{p_ic.prorroga_hasta}", paquete_id=p_ic.id)
+
+    # ---- Rastro en la bitácora
+    for _, uname, rol, ro, _ in USUARIOS:
+        bitacora.registrar(db, admin, "alta_usuario", {"username": uname, "rol": rol, "solo_lectura": ro})
+    bitacora.registrar(db, admin, "editar_catalogo", {"catalogo": "paquetes", "accion": "alta", "nombre": "Élite"})
+    bitacora.registrar(db, beto, "prorroga_solicitada", {"paquete_id": cafe.id, "hasta": str(cafe.prorroga_hasta)})
+    bitacora.registrar(db, ana, "confirmar_renovacion", {"paquete_id": p_tq.id, "en_ventana": False})
+    bitacora.registrar(db, carla, "programar_no_renovara", {"cliente": "Pastelería Dulce Hogar"})
+    bitacora.registrar(db, admin, "reasignar_cliente", {"cliente": "Escuela de Baile Ritmo", "de": ana.id, "a": None})
+    db.flush()
+    tareas.avisos_renovacion(db, H)
+    tareas.avisos_prorroga(db, H)
 
     db.commit()
     if credenciales_path:
