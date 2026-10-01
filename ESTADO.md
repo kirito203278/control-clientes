@@ -88,3 +88,8 @@ CICLO_DIAS=30, TOLERANCIA_DIAS=3, PRORROGA_MAX_DIAS=15, AVISO_DIAS_ANTES_RENOVAC
 - Todos los campos de contraseña de la interfaz (login, alta/cambio de usuario, contraseña de Facebook del cliente) tienen botón «Ver/Ocultar» para revisar lo escrito.
   El alta de usuario ofrece «Sugerir una» (aleatoria, generada en el navegador).
 - El seed deja contraseñas de EJEMPLO fijas (ver COMO_EJECUTAR.md). El CLI `python -m app.cli crear-admin` sigue generando una contraseña temporal para el primer admin de producción.
+
+## Prórroga = renovación automática al pagar (ajuste posterior)
+- Solicitar prórroga implica que el cliente sigue. En cuanto se **paga completo dentro de los 5 días**, el paquete se **renueva solo** (mismo paquete, tipo y costo;
+  el ciclo nuevo empieza el día del pago, +30 días). No se renueva al pedir la prórroga (el ciclo anterior seguiría sin pagarse). Para cambiar de paquete se usa la siguiente renovación.
+- Con la prórroga activa ya no se muestran «Renovó / No renovó»: no hay nada que decidir. Si no se completa a los 5 días, pasa a No renovados.

@@ -7,7 +7,17 @@ from sqlalchemy.orm import Session
 from app import bitacora
 from app.dates import hoy as hoy_mx
 from app.models import Pago, PaqueteCliente, Usuario
-from app.services import ciclos
+from app.services import ciclos, renovacion
+
+
+def renovar_si_completa_prorroga(db: Session, user: Usuario, p: PaqueteCliente) -> PaqueteCliente | None:
+    """Solicitar prórroga implica que el cliente sigue: en cuanto paga lo que debía DENTRO de los 5 días, el paquete se renueva
+    solo (mismo paquete, tipo y costo; el ciclo nuevo empieza hoy, +30 días). Si necesita cambiar de paquete, lo hace en la
+    siguiente renovación."""
+    hoy = hoy_mx()
+    if p.prorroga_hasta is not None and hoy <= p.prorroga_hasta and ciclos.es_vencido(p, hoy) and ciclos.pagado_completo(p):
+        return renovacion.renovar(db, user, p, paquete_id=None, tipo_id=None, costo=None)
+    return None
 
 
 def registrar_pago(db: Session, user: Usuario, p: PaqueteCliente, monto: Decimal, fecha: dt.date | None,

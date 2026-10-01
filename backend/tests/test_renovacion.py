@@ -276,20 +276,30 @@ def test_prorroga_solo_con_el_contrato_terminado_con_saldo_y_una_vez(api, ctx, f
     assert api.post(f"/api/paquetes/{ok.id}/prorroga", headers=h).status_code == 409
 
 
-def test_en_prorroga_admite_pagar_parcial_o_el_resto_y_al_completar_vuelve_la_ventana(api, db, ctx, fabrica):
+def test_en_prorroga_admite_pagar_parcial_o_el_resto_y_al_completar_renueva_solo(api, db, ctx, fabrica):
     h = ctx["h"]
     p = fabrica.ciclo(ctx["c"], H - D(1), costo=1000)
     api.post(f"/api/paquetes/{p.id}/prorroga", headers=h)
-    assert api.post(f"/api/paquetes/{p.id}/pagos", headers=h, json={"monto": 400}).status_code == 201     # parcial
-    assert api.get("/api/bloqueos", headers=h).json() == []                                                # sigue la prórroga
-    assert api.post(f"/api/paquetes/{p.id}/pagos", headers=h, json={"monto": 700}).status_code == 422     # excede el saldo
-    r = api.post(f"/api/paquetes/{p.id}/pagos", headers=h, json={"monto": 600})                            # el resto
-    assert r.status_code == 201
-    b = api.get("/api/bloqueos", headers=h).json()
-    assert [x["id"] for x in b] == [p.id] and b[0]["opciones_bloqueo"] == ["renovo", "no_renovo"]
-    # ya pagado: ahora sí puede renovar, y el ciclo nuevo empieza hoy
-    n = api.post(f"/api/paquetes/{p.id}/renovar", headers=h, json={}).json()["nuevo"]
-    assert n["fecha_inicio"] == str(H)
+    r = api.post(f"/api/paquetes/{p.id}/pagos", headers=h, json={"monto": 400})                    # parcial
+    assert r.status_code == 201 and r.json()["renovado_automaticamente"] is None
+    assert api.get("/api/bloqueos", headers=h).json() == []                                        # sigue la prórroga
+    assert api.post(f"/api/paquetes/{p.id}/pagos", headers=h, json={"monto": 700}).status_code == 422   # excede el saldo
+    r = api.post(f"/api/paquetes/{p.id}/pagos", headers=h, json={"monto": 600})                    # el resto
+    assert r.status_code == 201 and r.json()["renovado_automaticamente"]
+    assert r.json()["paquete"]["estado"] == "renovado" and r.json()["paquete"]["renovacion_decision"] == "si"
+    n = api.get(f"/api/paquetes/{r.json()['renovado_automaticamente']}", headers=h).json()
+    assert (n["fecha_inicio"], n["fecha_renovacion"], n["estado"]) == (str(H), str(H + D(30)), "activo")   # empieza el día del pago
+    assert (n["paquete"], float(n["costo"]), float(n["pagado"])) == ("Básico", 1000.0, 0.0)
+    assert api.get("/api/bloqueos", headers=h).json() == []
+    assert db.scalars(select(Renovacion)).one().ciclo_anterior_id == p.id
+
+
+def test_pagar_completo_sin_prorroga_no_renueva_solo(api, db, ctx, fabrica):
+    p = fabrica.ciclo(ctx["c"], H + D(2), costo=1000)                              # aún no termina, sin prórroga
+    r = api.post(f"/api/paquetes/{p.id}/pagos", headers=ctx["h"], json={"monto": 1000})
+    assert r.json()["renovado_automaticamente"] is None
+    db.refresh(p)
+    assert p.estado == "activo"
 
 
 def test_prorroga_vencida_sin_pago_el_cliente_pasa_solo_a_no_renovados_y_queda_el_mensaje(api, db, ctx, fabrica, hoy_fijo):
@@ -311,15 +321,15 @@ def test_prorroga_vencida_sin_pago_el_cliente_pasa_solo_a_no_renovados_y_queda_e
     assert db.scalar(select(func.count()).select_from(RecordatorioCliente)) == 1
 
 
-def test_prorroga_pagada_a_tiempo_no_se_archiva(api, db, ctx, fabrica, hoy_fijo):
+def test_prorroga_pagada_a_tiempo_se_renueva_y_no_se_archiva(api, db, ctx, fabrica, hoy_fijo):
     from app.jobs import tareas
     p = fabrica.ciclo(ctx["c"], H - D(1), costo=1000)
     api.post(f"/api/paquetes/{p.id}/prorroga", headers=ctx["h"])
     api.post(f"/api/paquetes/{p.id}/pagos", headers=ctx["h"], json={"monto": 1000})
     hoy_fijo(H + D(6))
     assert tareas.avisos_prorroga(db, H + D(6))["prorrogas_vencidas"] == 0
-    db.refresh(p)
-    assert p.estado in ("activo", "vencido")
+    db.refresh(p), db.refresh(ctx["c"])
+    assert p.estado == "renovado" and ctx["c"].estado == "activo"
 
 
 def test_aviso_de_prorroga_3_dias_antes_de_vencer(api, db, ctx, fabrica, hoy_fijo):
@@ -372,16 +382,6 @@ def test_con_prorroga_corriendo_no_se_archiva_por_falta_de_decision(api, db, ctx
     assert tareas.avisos_renovacion(db, H + D(4))["pasaron_a_no_renovados"] == 0
     db.refresh(p)
     assert p.estado != "archivado"
-
-
-def test_pagado_en_prorroga_y_sin_decidir_tiene_2_dias_extra_desde_el_fin_de_la_prorroga(api, db, ctx, fabrica, hoy_fijo):
-    from app.jobs import tareas
-    p = fabrica.ciclo(ctx["c"], H - D(1), costo=1000)
-    hoy_fijo(H)
-    api.post(f"/api/paquetes/{p.id}/prorroga", headers=ctx["h"])                  # hasta H+5
-    api.post(f"/api/paquetes/{p.id}/pagos", headers=ctx["h"], json={"monto": 1000})
-    assert tareas.avisos_renovacion(db, H + D(7))["pasaron_a_no_renovados"] == 0  # H+5 +2 = H+7: último día
-    assert tareas.avisos_renovacion(db, H + D(8))["pasaron_a_no_renovados"] == 1
 
 
 def test_avisos_de_renovacion_en_R_menos_4(db, ctx, fabrica):

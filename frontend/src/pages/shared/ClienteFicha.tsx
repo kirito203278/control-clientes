@@ -213,11 +213,12 @@ function Paquetes({ ficha, paqueteId, setPaqueteId, puedeEscribir, hayBloqueo, r
             {det.no_renovara && <span className="badge badge-neutral">Marcado: no renovará</span>}
             {!det.no_renovara && det.renovacion_decision !== 'pendiente' && <span className="badge badge-purple">Decisión: {det.renovacion_decision === 'si' ? 'renovó' : 'no renovó'}</span>}
           </div>
+          {det.prorroga_activa && <div className="callout callout-info">Con la prórroga activa no hay nada que decidir: <strong>en cuanto se pague lo que falta ({dinero(det.restante)}) el paquete se renueva solo</strong> (mismo paquete y costo; el ciclo nuevo empieza ese día). Si no se completa el {fecha(det.prorroga_hasta)}, el cliente pasa a No renovados.</div>}
           {vigente && det.estado_efectivo === 'por_vencer' && <div className="callout callout-warn">Este paquete renueva pronto: pregúntale al cliente si renueva.</div>}
           {det.no_renovara && (
             <div className="callout callout-info">Se archivará solo al terminar su contrato ({fecha(det.fecha_renovacion)} a las 11:59 pm) y, si es su último paquete, el cliente pasará a «No renovados».
               {escribe && <button className="btn btn-ghost btn-sm" style={{ marginLeft: 8 }} onClick={async () => { try { await api.post(`/paquetes/${det.id}/revertir-no-renovara`); await cambio(); avisar('Marca deshecha') } catch (e) { avisar(msg(e, 'No se pudo deshacer')) } }}>Deshacer</button>}</div>)}
-          {escribe && vigente && !det.no_renovara && (
+          {escribe && vigente && !det.no_renovara && !det.prorroga_activa && (
             <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
               <button className="btn btn-primary" onClick={() => setModal('renovar')}>Renovó</button>
               <button className="btn btn-secondary" onClick={() => setModal('no')}>{det.estado_efectivo === 'vencido' ? 'No renovó' : 'No renovará'}</button>
@@ -249,7 +250,7 @@ function Paquetes({ ficha, paqueteId, setPaqueteId, puedeEscribir, hayBloqueo, r
 }
 
 /* ------------------------------------------------------------------------------- pagos */
-function Pagos({ det, puedeEscribir, alCambiar, avisar }: { det: PaqueteDetalle; puedeEscribir: boolean; alCambiar: () => Promise<void>; avisar: (t: string) => void }) {
+function Pagos({ det, puedeEscribir, alCambiar, avisar }: { det: PaqueteDetalle; puedeEscribir: boolean; alCambiar: (sel?: number | null) => Promise<void>; avisar: (t: string) => void }) {
   const [monto, setMonto] = useState('')
   const [fechaPago, setFechaPago] = useState(hoyIso())
   const [nota, setNota] = useState('')
@@ -258,7 +259,12 @@ function Pagos({ det, puedeEscribir, alCambiar, avisar }: { det: PaqueteDetalle;
 
   async function registrar() {
     setError(null)
-    try { await api.post(`/paquetes/${det.id}/pagos`, { monto: Number(monto), fecha: fechaPago, nota: nota || null }); setMonto(''); setNota(''); await alCambiar(); avisar('Pago registrado') }
+    try {
+      const r = await api.post<{ renovado_automaticamente: number | null }>(`/paquetes/${det.id}/pagos`, { monto: Number(monto), fecha: fechaPago, nota: nota || null })
+      setMonto(''); setNota('')
+      await alCambiar(r.renovado_automaticamente)
+      avisar(r.renovado_automaticamente ? 'Pagado completo: el paquete se renovó solo (ciclo nuevo desde hoy)' : 'Pago registrado')
+    }
     catch (e) { setError(msg(e, 'No se pudo registrar el pago')) }
   }
   async function borrar(id: number) {
@@ -317,7 +323,7 @@ function Prorroga({ det }: { det: PaqueteDetalle }) {
         Prórroga de 5 días naturales activada el {fecha(det.prorroga_registrada_en)}, válida hasta el <strong>{fecha(det.prorroga_hasta)}</strong>.{' '}
         {det.restante <= 0 ? 'Ya se pagó completo.'
           : det.prorroga_vencida ? `Venció con ${dinero(det.restante)} sin pagar: el cliente pasa a No renovados.`
-          : `${diasTexto(det.prorroga_dias_restantes ?? 0)}. En este plazo se acepta el pago parcial o el resto (${dinero(det.restante)}); si no se completa, el cliente pasa solo a No renovados.`}
+          : `${diasTexto(det.prorroga_dias_restantes ?? 0)}. En este plazo se acepta el pago parcial o el resto (${dinero(det.restante)}); si no se completa, el cliente pasa solo a No renovados. Al pagar todo, se renueva automáticamente.`}
       </div>
     </>
   )
