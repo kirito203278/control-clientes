@@ -34,7 +34,7 @@ Errores en español, formato `{detail}`. Dinero como string decimal; fechas ISO 
 | POST | `/cm/clientes/{id}/password-fb/ver` | descifra y registra en bitácora (botón "Ver") |
 | DELETE | `/cm/clientes/{id}` | doble confirmación (`confirmar_nombre`) |
 | GET | `/cm/no-renovados` | |
-| POST | `/cm/clientes/{id}/reingresar` | `modo`: `continuar` \| `nuevo` (≥2 meses fuerza `nuevo` y borra historial anterior) |
+| POST | `/cm/clientes/{id}/reingresar` | `modo`: `continuar` \| `nuevo` (≥2 meses fuerza `nuevo` y borra historial anterior; a los 3 meses el cliente ya fue purgado) |
 
 ## Paquetes, pagos y prórroga (CM)
 | Método | Ruta | Notas |
@@ -54,7 +54,7 @@ Errores en español, formato `{detail}`. Dinero como string decimal; fechas ISO 
 |---|---|---|
 | GET | `/cm/renovaciones/tablero?mes=&quincena=` | 4 columnas: por vencer, vencidos sin decisión, renovados sin pago, completos |
 | POST | `/cm/paquetes/{id}/confirmar-renovacion` | `renovacion_decision` = si/no/pendiente (sin cerrar ciclo) |
-| POST | `/cm/paquetes/{id}/renovar` | `paquete_id`, `tipo_id`, `costo`, `fecha_renovacion` → cierra ciclo, abre el nuevo, fila en `renovaciones` |
+| POST | `/cm/paquetes/{id}/renovar` | `paquete_id`, `tipo_id`, `costo`, `fecha_renovacion` (por defecto = fecha actual del ciclo + 30 días) → cierra ciclo, abre el nuevo, fila en `renovaciones` |
 | POST | `/cm/paquetes/{id}/no-renovar` | `accion`: `conservar` \| `borrar` (+ `confirmar_nombre`; si era el último: `eliminar_cliente` bool) |
 | GET | `/cm/paquetes/{id}/historial` | cadena de ciclos + renovaciones |
 
@@ -78,13 +78,10 @@ Errores en español, formato `{detail}`. Dinero como string decimal; fechas ISO 
 | GET | `/admin/reportes/pdf?...` · `/admin/reportes/excel?...` | Admin (incl. solo lectura); en memoria (`BytesIO`) |
 | GET | `/cm/reportes/pdf?...` · `/cm/reportes/excel?...` | CM (misma función filtrada por `cm_id`) |
 
-## Importador (Fase 5)
-| POST | `/admin/importar/csv/previsualizar` y `/admin/importar/csv/confirmar` | Admin W; CSV del Excel, dry-run primero |
-
 ## Jobs (respaldo para cron-job.org)
 | Método | Ruta | Notas |
 |---|---|---|
-| POST | `/api/jobs/run/{nombre}` | header `X-Jobs-Secret` (comparación constante). `aviso_renovacion_y_vencidos` (12:00), `avisos_prorroga` (12:00; 3 días antes y vencidas), `purga_no_renovados` (12:10). Idempotentes vía `dedupe_key`. |
+| POST | `/api/jobs/run/{nombre}` | header `X-Jobs-Secret` (comparación constante). `aviso_renovacion_y_vencidos` (12:00), `avisos_prorroga` (12:00; 3 días antes y vencidas), `purga_no_renovados` (12:10, elimina clientes con 3 meses en No renovados). Idempotentes vía `dedupe_key`. |
 | GET | `/api/health` | UptimeRobot |
 
 APScheduler interno: 12:00 y 12:10 `America/Mexico_City`, además de los endpoints.

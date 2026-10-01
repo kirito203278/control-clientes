@@ -128,7 +128,7 @@ CREATE TABLE archivo_no_renovados (
     cliente_id      INTEGER NOT NULL REFERENCES clientes(id) ON DELETE CASCADE,  -- (el proyecto anterior no tenía CASCADE y causó un IntegrityError en la purga)
     cm_id           INTEGER REFERENCES usuarios(id),
     motivo          TEXT,
-    archivado_en    TIMESTAMPTZ NOT NULL DEFAULT now(),   -- reloj de las reglas de 2 meses y 1 año
+    archivado_en    TIMESTAMPTZ NOT NULL DEFAULT now(),   -- reloj de las reglas de 2 meses (reingreso) y 3 meses (purga)
     reingresado_en  TIMESTAMPTZ                           -- NULL = sigue en "No renovados"
 );
 CREATE INDEX ix_archivo_abierto ON archivo_no_renovados (archivado_en) WHERE reingresado_en IS NULL;
@@ -186,4 +186,4 @@ CREATE TABLE jobs_ejecuciones (
 -- catalogo_paquetes: Básico(1), Estándar(2), Élite(3), Campaña(4)
 -- catalogo_tipos:    Normal(1), Dinamita(2), Fantasma(3), Campaña(4)
 -- Usuarios y clientes de ejemplo (nombres ficticios): Fase 1, script de seed aparte.
--- Sin migración de pagado→pagos del Excel: el importador (Fase 5) crea UN pago inicial por la suma "Pagado".
+-- No hay importador de Excel: todo arranca desde cero; el seed de Fase 1 usa datos falsos.
