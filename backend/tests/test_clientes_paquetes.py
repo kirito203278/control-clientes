@@ -41,11 +41,11 @@ def test_cm_solo_ve_su_cartera_en_la_lista(api, auth, escenario):
     ("patch", "/api/clientes/{cb}", {"nombre": "Hackeado"}),
     ("post", "/api/clientes/{cb}/password-fb/ver", None),
     ("delete", "/api/clientes/{cb}?confirmar_nombre=Cliente de Beto", None),
-    ("post", "/api/clientes/{cb}/paquetes", {"paquete_id": 1, "tipo_id": 1, "costo": 100, "fecha_renovacion": "2026-11-01"}),
+    ("post", "/api/clientes/{cb}/paquetes", {"paquete_id": 1, "tipo_id": 1, "costo": 100, "fecha_inicio": "2026-10-01"}),
     ("get", "/api/paquetes/{pb}", None),
     ("patch", "/api/paquetes/{pb}", {"costo": 1}),
     ("post", "/api/paquetes/{pb}/pagos", {"monto": 10}),
-    ("put", "/api/paquetes/{pb}/prorroga", {"hasta": "2026-10-05"}),
+    ("post", "/api/paquetes/{pb}/prorroga", None),
     ("post", "/api/paquetes/{pb}/recordatorio", None),
     ("post", "/api/clientes/{cb}/reasignar", {"cm_id": None}),
 ])
@@ -86,7 +86,7 @@ def test_alta_cliente_cifra_credenciales_y_ficha_no_expone_password(api, db, aut
     r = api.post("/api/clientes", headers=h, json={
         "nombre": "Nuevo", "correo_fb": "nuevo@fb.test", "password_fb": "SuperSecreta1", "telefono": "5511112222",
         "cm_id": 999,  # un CM no puede escoger dueño
-        "paquetes": [{"paquete_id": 1, "tipo_id": 1, "costo": 1500, "fecha_renovacion": "2026-10-20"}]})
+        "paquetes": [{"paquete_id": 1, "tipo_id": 1, "costo": 1500, "fecha_inicio": "2026-10-01"}]})
     assert r.status_code == 201
     c = db.get(Cliente, r.json()["id"])
     assert c.cm_id == ana.id and "SuperSecreta1" not in c.password_fb_enc and "nuevo@fb.test" not in c.correo_fb_enc
@@ -177,52 +177,12 @@ def test_borrar_pago_solo_el_mismo_dia_del_autor(api, db, auth, escenario):
     assert api.delete(f"/api/pagos/{antiguo.id}", headers=h).status_code == 403
 
 
-# ------------------------------------------------------------------------------ prórroga
-def test_prorroga_maximo_15_dias_naturales_desde_hoy(api, auth, escenario):
-    h = auth(escenario["ana"])
-    pid = escenario["pa"].id
-    assert api.put(f"/api/paquetes/{pid}/prorroga", headers=h, json={"hasta": str(H + D(16))}).status_code == 422
-    r = api.put(f"/api/paquetes/{pid}/prorroga", headers=h, json={"hasta": str(H + D(15))})
-    assert r.status_code == 200 and r.json()["prorroga_dias_restantes"] == 15
-
-
-def test_prorroga_no_puede_ser_pasada(api, auth, escenario):
-    assert api.put(f"/api/paquetes/{escenario['pa'].id}/prorroga", headers=auth(escenario["ana"]),
-                   json={"hasta": str(H - D(1))}).status_code == 422
-
-
-def test_prorroga_requiere_saldo_pendiente(api, auth, escenario):
-    h = auth(escenario["ana"])
-    pid = escenario["pa"].id
-    api.post(f"/api/paquetes/{pid}/pagos", headers=h, json={"monto": 1500})
-    assert api.put(f"/api/paquetes/{pid}/prorroga", headers=h, json={"hasta": str(H + D(3))}).status_code == 422
-
-
-def test_una_sola_prorroga_por_ciclo_cm_no_la_cambia_admin_si(api, db, auth, escenario, crear_usuario):
-    h = auth(escenario["ana"])
-    pid = escenario["pa"].id
-    assert api.put(f"/api/paquetes/{pid}/prorroga", headers=h, json={"hasta": str(H + D(5))}).status_code == 200
-    assert api.put(f"/api/paquetes/{pid}/prorroga", headers=h, json={"hasta": str(H + D(10))}).status_code == 409
-    adm = auth(crear_usuario("admin.demo", rol="admin"))
-    assert api.put(f"/api/paquetes/{pid}/prorroga", headers=adm, json={"hasta": str(H + D(10))}).status_code == 200
-    assert db.scalars(select(Bitacora).where(Bitacora.accion == "prorroga_modificada")).one()
-
-
-def test_requiere_prorroga_tras_la_tolerancia(api, auth, fabrica, escenario):
-    h = auth(escenario["ana"])
-    p = fabrica.ciclo(escenario["ca"], H - D(4), estado="vencido")      # R+3 = H-1 -> tolerancia terminada
-    d = api.get(f"/api/paquetes/{p.id}", headers=h).json()
-    assert d["requiere_prorroga"] is True
-    q = fabrica.ciclo(escenario["ca"], H - D(3), estado="vencido")      # R+3 = H -> aún en tolerancia
-    assert api.get(f"/api/paquetes/{q.id}", headers=h).json()["requiere_prorroga"] is False
-
-
 # ------------------------------------------------------------------------ semáforo / estado
 def test_semaforo_y_estado_efectivo(api, auth, fabrica, escenario):
     h, c = auth(escenario["ana"]), escenario["ca"]
     casos = {
         "gris": fabrica.ciclo(c, H + D(20)),
-        "rojo": fabrica.ciclo(c, H - D(1), estado="vencido"),
+        "rojo": fabrica.ciclo(c, H - D(1)),                                    # pasó R sin decisión (derivado de la fecha)
         "amarillo": fabrica.ciclo(c, H + D(20), estado="renovado", decision="si", pagos=[(100, H)]),
         "verde": fabrica.ciclo(c, H + D(20), estado="renovado", decision="si", pagos=[(1500, H)]),
     }
@@ -258,3 +218,35 @@ def test_normalizar_telefono():
     from app.services.recordatorios import normalizar_telefono as n
     assert n("55 1234-5678") == "525512345678" and n("+52 1 55 1234 5678") == "525512345678"
     assert n("525512345678") == "525512345678" and n("123") is None and n(None) is None
+
+
+# ----------------------------------------------------- fechas: se captura el INICIO, la renovación es automática
+def test_alta_de_paquete_captura_inicio_y_renovacion_es_inicio_mas_30(api, db, auth, escenario):
+    h = auth(escenario["ana"])
+    r = api.post(f"/api/clientes/{escenario['ca'].id}/paquetes", headers=h,
+                 json={"paquete_id": 3, "tipo_id": 1, "costo": 4500, "fecha_inicio": "2026-10-10"})
+    d = api.get(f"/api/paquetes/{r.json()['id']}", headers=h).json()
+    assert (d["fecha_inicio"], d["fecha_renovacion"]) == ("2026-10-10", "2026-11-09")
+    # si no se manda inicio, es hoy
+    r = api.post(f"/api/clientes/{escenario['ca'].id}/paquetes", headers=h, json={"paquete_id": 1, "tipo_id": 1, "costo": 1})
+    assert api.get(f"/api/paquetes/{r.json()['id']}", headers=h).json()["fecha_renovacion"] == str(H + D(30))
+
+
+def test_cambiar_el_inicio_recalcula_renovacion_y_mueve_al_cliente_de_quincena(api, auth, crear_usuario, fabrica):
+    ana = crear_usuario("ana.ruiz")
+    h = auth(ana)
+    c = fabrica.cliente(ana, "Se mueve")
+    p = fabrica.ciclo(c, dt.date(2026, 10, 14))                         # renueva día 14 -> 1ra quincena
+    nombres = lambda q: [x["nombre"] for x in api.get(f"/api/clientes?quincena={q}", headers=h).json()]  # noqa: E731
+    assert nombres(1) == ["Se mueve"] and nombres(2) == []
+    r = api.patch(f"/api/paquetes/{p.id}", headers=h, json={"fecha_inicio": "2026-10-02"})   # renueva el 1 nov -> 1ra
+    assert r.json()["fecha_renovacion"] == "2026-11-01" and nombres(1) == ["Se mueve"]
+    r = api.patch(f"/api/paquetes/{p.id}", headers=h, json={"fecha_inicio": "2026-10-10"})   # renueva el 9 nov -> 1ra
+    r = api.patch(f"/api/paquetes/{p.id}", headers=h, json={"fecha_inicio": "2026-10-20"})   # renueva el 19 nov -> 2da
+    assert r.json()["fecha_renovacion"] == "2026-11-19" and nombres(1) == [] and nombres(2) == ["Se mueve"]
+    assert r.json()["quincena"] == 2
+
+
+def test_la_fecha_de_renovacion_ya_no_se_puede_editar_a_mano(api, auth, escenario):
+    r = api.patch(f"/api/paquetes/{escenario['pa'].id}", headers=auth(escenario["ana"]), json={"fecha_renovacion": "2027-01-01"})
+    assert r.status_code == 200 and r.json()["fecha_renovacion"] == str(H + D(10))     # se ignora

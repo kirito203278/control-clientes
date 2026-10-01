@@ -33,8 +33,8 @@ def test_la_app_no_arranca_con_secretos_debiles(campo, valor):
 def test_cors_y_reglas_de_negocio_por_defecto():
     s = _ajustes(cors_origins="https://a.com, https://b.com")
     assert s.cors_origins_list == ["https://a.com", "https://b.com"]
-    assert (s.ciclo_dias, s.tolerancia_dias, s.prorroga_max_dias, s.purga_meses, s.reingreso_meses, s.tz) == \
-        (30, 3, 15, 3, 2, "America/Mexico_City")
+    assert (s.ciclo_dias, s.prorroga_max_dias, s.dias_para_decidir, s.purga_meses, s.reingreso_meses, s.tz) == \
+        (30, 5, 2, 12, 2, "America/Mexico_City")
 
 
 def test_cabeceras_de_seguridad_y_sin_cache_en_api(api):

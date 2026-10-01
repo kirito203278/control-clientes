@@ -32,7 +32,7 @@ def test_contrasena_generada_18_caracteres_y_bcrypt():
 def test_seed(db, tmp_path):
     cred = tmp_path / "cred.txt"
     resumen = sembrar(db, credenciales_path=cred)
-    assert resumen == {"usuarios": 5, "clientes": 15}
+    assert resumen == {"usuarios": 5, "clientes": 16}
 
     # contraseñas solo en el archivo; en BD solo hash bcrypt
     texto = cred.read_text()
@@ -47,11 +47,11 @@ def test_seed(db, tmp_path):
 
     # escenarios clave presentes
     assert db.scalar(select(func.count()).select_from(Cliente).where(Cliente.cm_id.is_(None))) == 1
-    assert db.scalar(select(func.count()).select_from(ArchivoNoRenovado)) == 3
+    assert db.scalar(select(func.count()).select_from(ArchivoNoRenovado)) == 4
     multi = db.scalars(select(Cliente).where(Cliente.nombre == "Dra. Mariana Vélez")).one()
     assert len(multi.paquetes) == 2
-    vencida = db.scalars(select(PaqueteCliente).join(Cliente).where(PaqueteCliente.estado == "renovado", Cliente.nombre == "Papelería El Lápiz")).one()
-    assert vencida.restante == 1000 and vencida.prorroga_hasta < hoy()  # prórroga vencida con deuda
+    ic = db.scalars(select(PaqueteCliente).join(Cliente).where(Cliente.nombre == "Imprenta Central")).one()
+    assert ic.restante == 1000 and ic.prorroga_hasta < hoy()      # prórroga vencida con deuda, ya archivado
 
 
 def test_seed_se_niega_si_ya_hay_usuarios(db, tmp_path):

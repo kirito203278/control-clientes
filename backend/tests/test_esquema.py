@@ -47,13 +47,13 @@ def test_catalogos_sembrados(db):
         ["Normal", "Dinamita", "Fantasma", "Campaña"]
 
 
-def test_prorroga_valida_hasta_15_dias(db):
-    _, _, p = _ciclo(db, prorroga_registrada_en=H, prorroga_hasta=H + dt.timedelta(days=15))
+def test_prorroga_valida_hasta_5_dias(db):
+    _, _, p = _ciclo(db, prorroga_registrada_en=H, prorroga_hasta=H + dt.timedelta(days=5))
     assert p.id
 
 
-@pytest.mark.parametrize("hasta_dias", [16, 30, -1])
-def test_prorroga_mayor_a_15_dias_o_anterior_se_rechaza(db, hasta_dias):
+@pytest.mark.parametrize("hasta_dias", [6, 15, -1])
+def test_prorroga_mayor_a_5_dias_o_anterior_se_rechaza(db, hasta_dias):
     with pytest.raises(IntegrityError):
         _ciclo(db, prorroga_registrada_en=H, prorroga_hasta=H + dt.timedelta(days=hasta_dias))
     db.rollback()

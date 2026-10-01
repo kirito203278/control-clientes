@@ -40,6 +40,8 @@ export default function ClienteFicha({ clienteId, paqueteInicial, onChanged, onD
 
   const recargarTodo = async (sel?: number | null) => { await cargar(sel); onChanged() }
   const enNoRenovados = ficha.estado === 'no_renovado'
+  const hayBloqueo = ficha.paquetes.some((p) => p.bloqueado)
+  const escribe = puedeEscribir && !hayBloqueo        // con un paquete bloqueado solo se permiten las salidas (renovó / no renovó / prórroga)
 
   return (
     <div>
@@ -47,15 +49,16 @@ export default function ClienteFicha({ clienteId, paqueteInicial, onChanged, onD
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 4, flexWrap: 'wrap' }}>
         <h1 className="page-title" style={{ margin: 0 }}>{ficha.nombre}</h1>
         {enNoRenovados && <span className="badge badge-bad">No renovado</span>}
-        {puedeEscribir && !enNoRenovados && <button className="btn btn-secondary btn-sm right" onClick={() => setModal('agregar')}>+ Agregar paquete</button>}
+        {escribe && !enNoRenovados && <button className="btn btn-secondary btn-sm right" onClick={() => setModal('agregar')}>+ Agregar paquete</button>}
       </div>
       {user?.rol === 'admin' && puedeEscribir && <p className="muted" style={{ margin: '0 0 8px', fontSize: 13 }}>Operas por cuenta del CM: tus acciones quedan en la bitácora.</p>}
+      {hayBloqueo && <div className="callout callout-bad"><strong>Contrato terminado sin decisión.</strong> Mientras no indiques si renovó, no renovó o solicitaste prórroga, este cliente queda bloqueado.</div>}
       {enNoRenovados && <div className="callout callout-warn">Este cliente está en «No renovados» desde el {fecha(ficha.no_renovado_desde)}. Para reactivarlo usa <strong>No renovados → Reingresar</strong>.</div>}
 
-      <DatosCliente ficha={ficha} puedeEscribir={puedeEscribir} onGuardado={(f) => { setFicha(f); onChanged(); avisar('Datos guardados') }} onEliminado={onDeleted} />
+      <DatosCliente ficha={ficha} puedeEscribir={escribe} onGuardado={(f) => { setFicha(f); onChanged(); avisar('Datos guardados') }} onEliminado={onDeleted} />
 
       <div className="section-title">Paquetes</div>
-      <Paquetes ficha={ficha} paqueteId={paqueteId} setPaqueteId={setPaqueteId} puedeEscribir={puedeEscribir} recargar={recargarTodo}
+      <Paquetes ficha={ficha} paqueteId={paqueteId} setPaqueteId={setPaqueteId} puedeEscribir={puedeEscribir} hayBloqueo={hayBloqueo} recargar={recargarTodo}
         sinPaquetes={ficha.paquetes.length === 0} avisar={avisar} onClienteGone={onDeleted} />
 
       {ficha.historial.length > 0 && (
@@ -144,8 +147,8 @@ function DatosCliente({ ficha, puedeEscribir, onGuardado, onEliminado }: { ficha
 }
 
 /* ----------------------------------------------------------------------------- paquetes */
-function Paquetes({ ficha, paqueteId, setPaqueteId, puedeEscribir, recargar, sinPaquetes, avisar, onClienteGone }: {
-  ficha: Ficha; paqueteId: number | null; setPaqueteId: (id: number) => void; puedeEscribir: boolean
+function Paquetes({ ficha, paqueteId, setPaqueteId, puedeEscribir, hayBloqueo, recargar, sinPaquetes, avisar, onClienteGone }: {
+  ficha: Ficha; paqueteId: number | null; setPaqueteId: (id: number) => void; puedeEscribir: boolean; hayBloqueo: boolean
   recargar: (sel?: number | null) => Promise<void>; sinPaquetes: boolean; avisar: (t: string) => void; onClienteGone: () => void
 }) {
   const [det, setDet] = useState<PaqueteDetalle | null>(null)
@@ -161,6 +164,7 @@ function Paquetes({ ficha, paqueteId, setPaqueteId, puedeEscribir, recargar, sin
 
   const cambio = async (sel?: number | null) => { await recargar(sel ?? paqueteId); await cargarDet() }
   const vigente = det ? ficha.paquetes.some((p) => p.id === det.id) : false
+  const escribe = puedeEscribir && !hayBloqueo       // un paquete bloqueado del cliente deja solo las salidas
 
   if (sinPaquetes && !det) return <div className="card" style={{ padding: 20 }}><p className="muted" style={{ margin: 0 }}>Este cliente no tiene paquetes vigentes.</p></div>
   return (
@@ -190,28 +194,34 @@ function Paquetes({ ficha, paqueteId, setPaqueteId, puedeEscribir, recargar, sin
             <div style={{ flex: 1 }}><Progreso pct={det.avance_pct} /></div>
             <strong style={{ fontSize: 13, minWidth: 120, textAlign: 'right' }}>{dinero(det.pagado)} de {dinero(det.costo)}</strong>
           </div>
-          {puedeEscribir && vigente && <div style={{ textAlign: 'right' }}><button className="btn btn-ghost btn-sm" onClick={() => setModal('editar')}>Editar paquete</button></div>}
+          {escribe && vigente && <div style={{ textAlign: 'right' }}><button className="btn btn-ghost btn-sm" onClick={() => setModal('editar')}>Editar paquete</button></div>}
 
-          <Pagos det={det} puedeEscribir={puedeEscribir} alCambiar={cambio} avisar={avisar} />
-          <Prorroga det={det} puedeEscribir={puedeEscribir} alCambiar={cambio} avisar={avisar} />
+          {det.bloqueado && <Bloqueado det={det} puedeEscribir={puedeEscribir} onRenovo={() => setModal('renovar')} onNoRenovo={() => setModal('no')}
+            onProrroga={async () => { try { await api.post(`/paquetes/${det.id}/prorroga`); await cambio(); avisar('Prórroga activada: 5 días naturales') } catch (e) { avisar(msg(e, 'No se pudo activar')) } }} />}
+
+          <Pagos det={det} puedeEscribir={escribe} alCambiar={cambio} avisar={avisar} />
+          <Prorroga det={det} />
 
           <div className="section-title">Renovación</div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
             <Semaforo valor={det.semaforo} conTexto />
-            {vigente && <span className="muted" style={{ fontSize: 13 }}>· {diasTexto(det.dias_para_renovar)} ({fecha(det.fecha_renovacion)})</span>}
-            {det.renovacion_decision !== 'pendiente' && <span className="badge badge-purple">Decisión: {det.renovacion_decision === 'si' ? 'renovó' : 'no renovó'}</span>}
+            {vigente && <span className="muted" style={{ fontSize: 13 }}>· {diasTexto(det.dias_para_renovar)} ({fecha(det.fecha_renovacion)}, termina a las 11:59 pm)</span>}
+            {det.no_renovara && <span className="badge badge-neutral">Marcado: no renovará</span>}
+            {!det.no_renovara && det.renovacion_decision !== 'pendiente' && <span className="badge badge-purple">Decisión: {det.renovacion_decision === 'si' ? 'renovó' : 'no renovó'}</span>}
           </div>
-          {vigente && det.estado === 'vencido' && <div className="callout callout-bad">Llegó su fecha de renovación sin decisión. Indica si el cliente renovó.</div>}
           {vigente && det.estado_efectivo === 'por_vencer' && <div className="callout callout-warn">Este paquete renueva pronto: pregúntale al cliente si renueva.</div>}
-          {puedeEscribir && vigente && (
+          {det.no_renovara && (
+            <div className="callout callout-info">Se archivará solo al terminar su contrato ({fecha(det.fecha_renovacion)} a las 11:59 pm) y, si es su último paquete, el cliente pasará a «No renovados».
+              {escribe && <button className="btn btn-ghost btn-sm" style={{ marginLeft: 8 }} onClick={async () => { try { await api.post(`/paquetes/${det.id}/revertir-no-renovara`); await cambio(); avisar('Marca deshecha') } catch (e) { avisar(msg(e, 'No se pudo deshacer')) } }}>Deshacer</button>}</div>)}
+          {escribe && vigente && !det.no_renovara && (
             <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
               <button className="btn btn-primary" onClick={() => setModal('renovar')}>Renovó</button>
-              <button className="btn btn-secondary" onClick={() => setModal('no')}>No renovó</button>
+              <button className="btn btn-secondary" onClick={() => setModal('no')}>{det.estado_efectivo === 'vencido' ? 'No renovó' : 'No renovará'}</button>
             </div>)}
-          {det.restante > 0 && puedeEscribir && (
+          {det.restante > 0 && escribe && det.estado !== 'archivado' && (
             <div style={{ marginTop: 14 }}>
               <button className="btn btn-secondary btn-sm" onClick={async () => { try { setRecordatorio(await api.post<Recordatorio>(`/paquetes/${det.id}/recordatorio`)) } catch (e) { avisar(msg(e, 'No se pudo generar')) } }}>
-                Recordatorio de pago al cliente</button>
+                Mensaje de pago para el cliente</button>
             </div>)}
           {det.renovaciones.length > 0 && (
             <>
@@ -272,41 +282,39 @@ function Pagos({ det, puedeEscribir, alCambiar, avisar }: { det: PaqueteDetalle;
   )
 }
 
-/* ----------------------------------------------------------------------------- prórroga */
-function Prorroga({ det, puedeEscribir, alCambiar, avisar }: { det: PaqueteDetalle; puedeEscribir: boolean; alCambiar: () => Promise<void>; avisar: (t: string) => void }) {
-  const { user } = useAuth()
-  const hoy = hoyIso(), maximo = sumarDias(hoy, 15)
-  const [hasta, setHasta] = useState(sumarDias(hoy, 7))
-  const [editando, setEditando] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  if (det.restante <= 0 && !det.prorroga_hasta) return null
-  const puedeRegistrar = puedeEscribir && ['activo', 'vencido', 'renovado'].includes(det.estado) && det.restante > 0 &&
-    (!det.prorroga_hasta || (user?.rol === 'admin' && editando))
-
-  async function guardar() {
-    setError(null)
-    try { await api.put(`/paquetes/${det.id}/prorroga`, { hasta }); setEditando(false); await alCambiar(); avisar('Prórroga registrada') }
-    catch (e) { setError(msg(e, 'No se pudo registrar la prórroga')) }
-  }
+/* ----------------------------------------------------------------------------- bloqueo y prórroga */
+function Bloqueado({ det, puedeEscribir, onRenovo, onNoRenovo, onProrroga }: {
+  det: PaqueteDetalle; puedeEscribir: boolean; onRenovo: () => void; onNoRenovo: () => void; onProrroga: () => void
+}) {
+  const op = det.opciones_bloqueo
   return (
-    <>
-      <div className="section-title">Prórroga</div>
-      {det.requiere_prorroga && <div className="callout callout-bad">Terminó la tolerancia de 3 días y el cliente aún debe {dinero(det.restante)}: registra hasta cuándo le diste plazo.</div>}
-      {det.prorroga_hasta && (
-        <div className={`callout ${det.prorroga_vencida ? 'callout-bad' : 'callout-warn'}`}>
-          Prórroga hasta el <strong>{fecha(det.prorroga_hasta)}</strong> (registrada el {fecha(det.prorroga_registrada_en)}).{' '}
-          {det.restante <= 0 ? 'Ya se pagó completo.' : det.prorroga_vencida ? `Venció hace ${-(det.prorroga_dias_restantes ?? 0)} día(s) y aún faltan ${dinero(det.restante)}.` : `${diasTexto(det.prorroga_dias_restantes ?? 0)}; faltan ${dinero(det.restante)}.`}
-          {user?.rol === 'admin' && puedeEscribir && det.restante > 0 && !editando && <button className="btn btn-ghost btn-sm" onClick={() => setEditando(true)}>Cambiar (admin)</button>}
-        </div>)}
-      {puedeRegistrar && (
-        <div className="row">
-          <div className="field" style={{ maxWidth: 200 }}><label>Plazo hasta (máx. 15 días naturales)</label>
-            <input type="date" min={hoy} max={maximo} value={hasta} onChange={(e) => setHasta(e.target.value)} /></div>
-          <button className="btn btn-secondary" onClick={guardar} disabled={!hasta}>Registrar prórroga</button>
-        </div>)}
-      {!det.prorroga_hasta && !puedeRegistrar && det.restante > 0 && <p className="muted" style={{ margin: 0, fontSize: 13 }}>Si el cliente no completa el pago, registra aquí la prórroga que le diste.</p>}
-      <ErrorTexto texto={error} />
-    </>
+    <div className="callout callout-bad" style={{ padding: 16, marginTop: 16 }}>
+      <strong style={{ fontSize: 15 }}>Terminó el contrato de este paquete ({fecha(det.fecha_renovacion)}, 11:59 pm)</strong>
+      <p style={{ margin: '6px 0 10px' }}>
+        {det.restante > 0 ? `El cliente debe ${dinero(det.restante)}. ` : 'Está pagado por completo. '}
+        Elige una opción{det.limite_decision ? `; si no decides, pasa a No renovados el ${fecha(sumarDias(det.limite_decision, 1))}` : ''}.
+      </p>
+      {puedeEscribir ? (
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {op.includes('renovo') && <button className="btn btn-primary" onClick={onRenovo}>Renovó</button>}
+          {op.includes('prorroga') && <button className="btn btn-secondary" onClick={onProrroga}>Solicitó prórroga (5 días)</button>}
+          {op.includes('no_renovo') && <button className="btn btn-secondary" onClick={onNoRenovo}>No renovó</button>}
+        </div>) : <span className="muted">Tu cuenta es de solo lectura.</span>}
+    </div>
   )
 }
 
+function Prorroga({ det }: { det: PaqueteDetalle }) {
+  if (!det.prorroga_hasta) return null
+  return (
+    <>
+      <div className="section-title">Prórroga</div>
+      <div className={`callout ${det.restante <= 0 ? 'callout-good' : det.prorroga_vencida ? 'callout-bad' : 'callout-warn'}`}>
+        Prórroga de 5 días naturales activada el {fecha(det.prorroga_registrada_en)}, válida hasta el <strong>{fecha(det.prorroga_hasta)}</strong>.{' '}
+        {det.restante <= 0 ? 'Ya se pagó completo.'
+          : det.prorroga_vencida ? `Venció con ${dinero(det.restante)} sin pagar: el cliente pasa a No renovados.`
+          : `${diasTexto(det.prorroga_dias_restantes ?? 0)}. En este plazo se acepta el pago parcial o el resto (${dinero(det.restante)}); si no se completa, el cliente pasa solo a No renovados.`}
+      </div>
+    </>
+  )
+}

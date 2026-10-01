@@ -27,7 +27,7 @@ def datos(db, crear_usuario, fabrica, hoy_fijo):
                             prorroga=(oct_(15), oct_(19)))                      # prórroga ya vencida
     e["a3"] = fabrica.ciclo(a, oct_(25), costo=3000)
     e["a4"] = fabrica.ciclo(a, dt.date(2026, 9, 20), costo=500, estado="vencido", pagos=[(100, dt.date(2026, 9, 1))],
-                            prorroga=(dt.date(2026, 10, 10), oct_(25)))          # de septiembre, prórroga activa
+                            prorroga=(oct_(18), oct_(22)))          # de septiembre, prórroga activa
     e["a5"] = fabrica.ciclo(a, oct_(10), costo=700, estado="archivado", decision="no")
     e["b1"] = fabrica.ciclo(b, oct_(30), costo=1500, pagos=[(1500, oct_(19))])
     e["c1"] = fabrica.ciclo(c, oct_(12), costo=800, por=ana)
@@ -113,11 +113,11 @@ def test_reporte_datos_secciones(api, auth, crear_usuario, datos):
     assert len(d["detalle"]) == 5                    # 7 ciclos - a4 (septiembre) - a5 (archivado)
     # prórrogas: NO se limitan al periodo (a4 es de septiembre); vencidas primero
     pr = d["prorrogas"]
-    assert [(p["paquete"], p["vencida"], p["dias"]) for p in pr] == [("Básico", True, -1), ("Básico", False, 5)]
+    assert [(p["paquete"], p["vencida"], p["dias"]) for p in pr] == [("Básico", True, -1), ("Básico", False, 2)]
     assert [p["cliente"] for p in pr] == ["Cliente A", "Cliente A"] and float(pr[0]["restante"]) == 1500
     # pendientes agrupados por CM: a2 vencido sin decisión; a4 también (septiembre, arrastrado)
     venc = d["pendientes"]["vencidos"]
-    assert [g["cm"] for g in venc] == ["Ana"] and len(venc[0]["items"]) == 2
+    assert [g["cm"] for g in venc] == ["Ana", "Por reasignar"] and len(venc[0]["items"]) == 2   # c1 (12 oct) también ya venció
     assert d["pendientes"]["renovados_sin_pago"] == []
     assert d["pendientes"]["por_vencer"] == []                                  # a3 vence el 25: faltan 5 días (> 4)
 
@@ -206,7 +206,7 @@ def test_excel_las_formulas_calculan_los_mismos_numeros_que_el_json(api, auth, c
     total_cm = [c.value for c in wb["Por CM"][wb["Por CM"].max_row]]
     assert total_cm[3:6] == [8300, 3000, 5300]
     pr = wb["Prórrogas"]
-    assert [pr.cell(r, 8).value for r in (2, 3)] == [-1, 5] and pr.cell(pr.max_row, 6).value == 1500 + 400
+    assert [pr.cell(r, 8).value for r in (2, 3)] == [-1, 2] and pr.cell(pr.max_row, 6).value == 1500 + 400
     assert pr["I2"].value.startswith("VENCIDA")
     ta = wb["Tasa renovación"]
     assert [ta.cell(ta.max_row, c).value for c in (2, 3)] == [4, 1] and round(ta.cell(ta.max_row, 4).value, 3) == 0.25

@@ -37,7 +37,7 @@ Necesitan un Postgres con permiso para crear bases (cada corrida crea y borra la
 docker compose up -d db
 cd backend && . ../.venv/bin/activate && python -m pytest -q       # toma credenciales de ../.env; o define TEST_DATABASE_URL
 ```
-Reglas críticas cubiertas: prórroga máxima, aislamiento por `cm_id`, reglas de reingreso y purga, periodos y cortes de
+Reglas críticas cubiertas: bloqueo por contrato vencido, prórroga de 5 días, mensaje de una sola vez, aislamiento por `cm_id`, reglas de reingreso y purga a 1 año, periodos y cortes de
 quincena, jobs idempotentes, reportes (incluido recálculo de fórmulas del Excel con LibreOffice si está instalado).
 
 ## Producción

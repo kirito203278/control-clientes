@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { api } from '../../api/client'
 import type { ClienteListItem } from '../../api/types'
 import { useAuth } from '../../auth/AuthContext'
+import BloqueoModal from '../../components/BloqueoModal'
 import Logo from '../../components/Logo'
 import NotificationBell from '../../components/NotificationBell'
 import { Semaforo } from '../../components/ui'
@@ -22,6 +23,7 @@ export default function CmPanel() {
   const [vista, setVista] = useState<Vista>({ tipo: 'tablero' })
   const [agregando, setAgregando] = useState(false)
   const [busqueda, setBusqueda] = useState('')
+  const [version, setVersion] = useState(0)          // se incrementa al resolver un bloqueo para recargar la vista actual
 
   const cargar = useCallback(() => api.get<ClienteListItem[]>(`/clientes?quincena=${quincena}`).then(setClientes), [quincena])
   useEffect(() => { cargar() }, [cargar])
@@ -69,14 +71,15 @@ export default function CmPanel() {
       </aside>
 
       <main className="cm-main">
-        {vista.tipo === 'cliente' && <ClienteFicha key={vista.id} clienteId={vista.id} paqueteInicial={vista.paquete} onChanged={cargar}
+        {vista.tipo === 'cliente' && <ClienteFicha key={`${vista.id}-${version}`} clienteId={vista.id} paqueteInicial={vista.paquete} onChanged={cargar}
           onDeleted={() => { cargar(); setVista({ tipo: 'tablero' }) }} />}
-        {vista.tipo === 'tablero' && <Tablero onAbrir={(c, p) => abrir(c, p)} />}
-        {vista.tipo === 'ingresos' && <Ingresos onAbrirCliente={(id) => abrir(id)} />}
+        {vista.tipo === 'tablero' && <Tablero key={version} onAbrir={(c, p) => abrir(c, p)} />}
+        {vista.tipo === 'ingresos' && <Ingresos key={version} onAbrirCliente={(id) => abrir(id)} />}
         {vista.tipo === 'reportes' && <Reportes />}
-        {vista.tipo === 'no_renovados' && <NoRenovados onAbrir={(id) => abrir(id)} onCambio={cargar} />}
+        {vista.tipo === 'no_renovados' && <NoRenovados key={version} onAbrir={(id) => abrir(id)} onCambio={cargar} />}
       </main>
 
+      <BloqueoModal onResuelto={() => { cargar(); setVersion((n) => n + 1) }} />
       {agregando && <AgregarClienteModal onClose={() => setAgregando(false)} onHecho={(id) => { setAgregando(false); cargar(); abrir(id) }} />}
     </div>
   )

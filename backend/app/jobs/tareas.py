@@ -1,5 +1,7 @@
-"""Tareas programadas. Idempotentes: se pueden correr varias veces el mismo día sin duplicar efectos
-(notificaciones con dedupe_key, estados filtrados por fecha)."""
+"""Tareas programadas (00:05 y 12:00 las dos primeras; 12:10 la purga). Idempotentes: se pueden correr varias
+veces el mismo día sin duplicar efectos (notificaciones con dedupe_key, estados filtrados por fecha).
+
+Corren a las 00:05 para que los cambios de estado ocurran poco después de las 23:59 del día de renovación."""
 import datetime as dt
 import logging
 
@@ -10,8 +12,8 @@ from app.config import get_settings
 from app.dates import hoy as hoy_mx
 from app.database import get_sessionmaker
 from app.models import JobEjecucion, PaqueteCliente
-from app.services import ciclos, notificar
-from app.services.renovacion import purgar_no_renovados
+from app.services import ciclos, notificar, recordatorios
+from app.services.renovacion import archivar, purgar_no_renovados
 
 log = logging.getLogger("jobs")
 
@@ -26,48 +28,70 @@ def _paquetes(db: Session, *condiciones):
 
 
 def avisos_renovacion(db: Session, hoy: dt.date | None = None) -> dict:
-    """12:00 · avisa 4 días antes de la renovación (3 días antes de la fecha límite R-1) y marca como
-    vencidos los paquetes que llegaron a su fecha sin decisión, notificando al CM."""
+    """1) Avisa «¿renueva?» 4 días antes de la renovación (3 días antes de la fecha límite R-1).
+    2) Pasada la fecha (R 23:59) sin decisión: marca vencido y avisa del bloqueo.
+    3) Los marcados «no renovará» se archivan al terminar su contrato.
+    4) Sin decisión tras `dias_para_decidir` días de bloqueo: pasan solos a No renovados."""
     hoy = hoy or hoy_mx()
-    aviso = get_settings().aviso_dias_antes_renovacion
-    avisos = vencidos = 0
-    for p in _paquetes(db, PaqueteCliente.estado == "activo", PaqueteCliente.renovacion_decision == "pendiente",
-                       PaqueteCliente.fecha_renovacion <= hoy + dt.timedelta(days=aviso)).all():
-        c, dias = p.cliente, (p.fecha_renovacion - hoy).days
+    s = get_settings()
+    avisos = vencidos = auto_no_renueva = programados = 0
+    for p in _paquetes(db, PaqueteCliente.estado.in_(ciclos.VIGENTES),
+                       PaqueteCliente.fecha_renovacion <= hoy + dt.timedelta(days=s.aviso_dias_antes_renovacion)).all():
+        c = p.cliente
         if c.estado != "activo":
             continue
-        if dias <= 0:
+        dias = (p.fecha_renovacion - hoy).days
+        if p.renovacion_decision == "no":                                # marcado por el CM
+            if hoy > p.fecha_renovacion:
+                archivar(db, p, "No renovó (marcado por el CM)")
+                programados += 1
+            continue
+        if p.renovacion_decision != "pendiente":
+            continue
+        if dias >= 0:
+            if p.estado == "activo":
+                avisos += notificar.crear(
+                    db, c, "renovacion_3d",
+                    f"{c.nombre}: el paquete {p.paquete.nombre} renueva el {_fmt(p.fecha_renovacion)} "
+                    f"({'hoy' if dias == 0 else 'mañana' if dias == 1 else f'en {dias} días'}). ¿Renueva?",
+                    f"renov:{p.id}", paquete_id=p.id)
+            continue
+        # Ya pasó su fecha sin decisión
+        if hoy > ciclos.limite_decision(p) and not ciclos.prorroga_activa(p, hoy):
+            archivar(db, p, "Sin decisión: no renovó")
+            auto_no_renueva += 1
+            continue
+        if p.estado != "vencido":
             p.estado = "vencido"
-            vencidos += 1
-            notificar.crear(db, c, "paquete_vencido",
-                            f"{c.nombre}: el paquete {p.paquete.nombre} llegó a su fecha de renovación "
-                            f"({_fmt(p.fecha_renovacion)}) sin decisión. ¿Renovó?",
-                            f"vencido:{p.id}", paquete_id=p.id)
-        else:
-            avisos += notificar.crear(
-                db, c, "renovacion_3d",
-                f"{c.nombre}: el paquete {p.paquete.nombre} renueva el {_fmt(p.fecha_renovacion)} "
-                f"({'mañana' if dias == 1 else f'en {dias} días'}). ¿Renueva?", f"renov:{p.id}", paquete_id=p.id)
+        vencidos += notificar.crear(
+            db, c, "paquete_vencido",
+            f"{c.nombre}: terminó el contrato del paquete {p.paquete.nombre} ({_fmt(p.fecha_renovacion)}). "
+            f"Indica si renovó, no renovó o solicitó prórroga; si no decides pasa a No renovados el "
+            f"{_fmt(ciclos.limite_decision(p) + dt.timedelta(days=1))}.", f"vencido:{p.id}", paquete_id=p.id)
     db.commit()
-    return {"avisos": avisos, "marcados_vencidos": vencidos}
+    return {"avisos": avisos, "marcados_vencidos": vencidos, "pasaron_a_no_renovados": auto_no_renueva + programados}
 
 
 def avisos_prorroga(db: Session, hoy: dt.date | None = None) -> dict:
-    """12:00 · avisa 3 días antes de vencer una prórroga y, si venció sin pago completo, pregunta si el cliente pagó."""
+    """Avisa 3 días antes de que venza una prórroga. Si venció sin pago completo: el cliente pasa SOLO a No renovados,
+    se deja listo el mensaje para el cliente (una sola vez) y se avisa al CM."""
     hoy = hoy or hoy_mx()
     margen = get_settings().aviso_prorroga_dias
     proximas = vencidas = 0
-    for p in _paquetes(db, PaqueteCliente.prorroga_hasta.is_not(None), PaqueteCliente.estado.in_(ciclos.COBRABLES),
+    for p in _paquetes(db, PaqueteCliente.prorroga_hasta.is_not(None), PaqueteCliente.estado.in_(ciclos.VIGENTES),
                        PaqueteCliente.prorroga_hasta <= hoy + dt.timedelta(days=margen)).all():
-        if ciclos.pagado_hasta(p) >= p.costo:
+        if ciclos.pagado_completo(p):
             continue
         c, resta = p.cliente, p.costo - ciclos.pagado_hasta(p)
         if p.prorroga_hasta < hoy:
+            a_no_ren = archivar(db, p, "La prórroga venció sin pago completo")
+            recordatorios.crear_para_paquete(db, p, c.cm_id)
             vencidas += notificar.crear(
                 db, c, "prorroga_vencida",
-                f"{c.nombre}: la prórroga del paquete {p.paquete.nombre} venció el {_fmt(p.prorroga_hasta)} y aún "
-                f"faltan ${resta:,.2f}. ¿El cliente pagó?", f"prorroga-venc:{p.id}:{p.prorroga_hasta}",
-                paquete_id=p.id, requiere_respuesta=True)
+                f"{c.nombre}: la prórroga del paquete {p.paquete.nombre} venció el {_fmt(p.prorroga_hasta)} sin pago completo "
+                f"(faltan ${resta:,.2f}). {'El cliente pasó a No renovados. ' if a_no_ren else ''}"
+                f"Tienes listo el mensaje para el cliente: envíalo y márcalo como enviado.",
+                f"prorroga-venc:{p.id}:{p.prorroga_hasta}", paquete_id=p.id)
         else:
             d = (p.prorroga_hasta - hoy).days
             proximas += notificar.crear(
@@ -80,7 +104,7 @@ def avisos_prorroga(db: Session, hoy: dt.date | None = None) -> dict:
 
 
 def purga_no_renovados(db: Session) -> dict:
-    """12:10 · elimina definitivamente a los clientes con 3 meses en No renovados."""
+    """12:10 · elimina definitivamente a los clientes con 1 año en No renovados."""
     eliminados = purgar_no_renovados(db)
     db.commit()
     return {"eliminados": len(eliminados)}

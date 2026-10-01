@@ -32,3 +32,30 @@ def armar_texto(cliente_nombre: str, paquete: str, restante: Decimal, fecha_limi
 def wa_url(telefono: str | None, texto: str) -> str | None:
     tel = normalizar_telefono(telefono)
     return f"https://wa.me/{tel}?text={quote(texto)}" if tel else None
+
+
+def crear_para_paquete(db, p, cm_id):
+    """Mensaje al cliente por saldo pendiente. Regla: una vez marcado como enviado NO se puede volver a enviar.
+    Devuelve (recordatorio, creado). Si ya había uno sin enviar, lo reutiliza (no duplica)."""
+    from sqlalchemy import select
+
+    from app.models import RecordatorioCliente
+    from app.services import ciclos
+
+    previos = db.scalars(select(RecordatorioCliente).where(RecordatorioCliente.paquete_id == p.id)
+                         .order_by(RecordatorioCliente.id.desc())).all()
+    if any(r.enviado_en for r in previos):
+        raise YaEnviado()
+    if previos:
+        return previos[0], False
+    restante = p.costo - ciclos.pagado_hasta(p)
+    texto = armar_texto(p.cliente.nombre, p.paquete.nombre, restante, p.prorroga_hasta)
+    r = RecordatorioCliente(paquete_id=p.id, cliente_id=p.cliente_id, cm_id=cm_id,
+                            telefono_destino=normalizar_telefono(p.cliente.telefono), texto=texto)
+    db.add(r)
+    db.flush()
+    return r, True
+
+
+class YaEnviado(Exception):
+    """El mensaje de este paquete ya se envió; no se permite enviarlo otra vez."""

@@ -60,9 +60,10 @@ function Tarjeta({ t, onClick, verCm }: { t: TarjetaTablero; onClick: () => void
       </div>
       <div style={{ display: 'flex', gap: 4, marginTop: 6, flexWrap: 'wrap' }}>
         {t.arrastrado && <span className="badge badge-neutral">arrastrado</span>}
-        {t.requiere_prorroga && <span className="badge badge-bad">requiere prórroga</span>}
+        {t.bloqueado && <span className="badge badge-bad">bloqueado: decidir</span>}
+        {t.no_renovara && <span className="badge badge-neutral">no renovará</span>}
         {t.prorroga_vencida && <span className="badge badge-bad">prórroga vencida</span>}
-        {t.prorroga_hasta && !t.prorroga_vencida && t.restante > 0 && <span className="badge badge-yellow">prórroga {fecha(t.prorroga_hasta)}</span>}
+        {t.prorroga_activa && <span className="badge badge-yellow">prórroga hasta {fecha(t.prorroga_hasta)}</span>}
       </div>
     </button>
   )

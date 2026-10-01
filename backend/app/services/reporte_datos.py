@@ -45,7 +45,9 @@ def _cargar(db: Session, user: Usuario, per: Periodo, cm_id: int | None, estados
 
 def _cargar_abiertos(db: Session, user: Usuario, cm_id: int | None) -> list[PaqueteCliente]:
     """Todos los ciclos que aún pueden tener algo pendiente (sin importar su fecha de renovación)."""
-    q = paquetes_q(user).where(PaqueteCliente.estado.in_(ciclos.COBRABLES))
+    # Además de lo vigente: ciclos archivados por prórroga vencida, que conservan saldo por cobrar (sección 4)
+    q = paquetes_q(user).where(PaqueteCliente.estado.in_(ciclos.COBRABLES) |
+                               ((PaqueteCliente.estado == "archivado") & PaqueteCliente.prorroga_hasta.is_not(None)))
     if user.rol == "admin" and cm_id is not None:
         q = q.where(Cliente.cm_id == cm_id)
     return list(db.scalars(q.options(selectinload(PaqueteCliente.cliente), selectinload(PaqueteCliente.paquete),
@@ -130,7 +132,7 @@ def construir(db: Session, user: Usuario, per: Periodo, hoy: dt.date, cm_id: int
     # ------------------------------------------------------------ pendientes de renovar
     pendientes = {"por_vencer": defaultdict(list), "vencidos": defaultdict(list), "renovados_sin_pago": defaultdict(list)}
     for f in abiertos:
-        if f["estado"] == "vencido" and f["decision"] == "pendiente":
+        if f["estado_efectivo"] == "vencido":
             clave = "vencidos"
         elif f["estado"] == "renovado" and f["restante"] > 0:
             clave = "renovados_sin_pago"

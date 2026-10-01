@@ -14,7 +14,7 @@ from app.dates import hoy as hoy_mx
 from app.deps import get_current_user, require_admin_write, require_writer
 from app.models import (ArchivoNoRenovado, CatalogoPaquete, CatalogoTipo, Cliente, PaqueteCliente, Usuario)
 from app.security.crypto import decrypt_value, encrypt_value
-from app.services import ciclos
+from app.services import bloqueo, ciclos
 from app.services.scope import clientes_q, obtener_cliente
 
 router = APIRouter(prefix="/api/clientes", tags=["clientes"])
@@ -24,8 +24,7 @@ class PaqueteNuevo(BaseModel):
     paquete_id: int
     tipo_id: int
     costo: Decimal = Field(ge=0, max_digits=10, decimal_places=2)
-    fecha_renovacion: dt.date
-    fecha_inicio: dt.date | None = None
+    fecha_inicio: dt.date | None = None      # se captura el INICIO; la renovación se calcula sola (+30 días)
 
 
 class ClienteIn(BaseModel):
@@ -60,13 +59,15 @@ def validar_catalogos(db: Session, paquete_id: int, tipo_id: int) -> None:
         raise HTTPException(422, "Tipo inválido o desactivado")
 
 
+def tipo_id_ok(datos: PaqueteNuevo) -> int:
+    return datos.tipo_id
+
+
 def crear_ciclo(db: Session, cliente: Cliente, datos: PaqueteNuevo) -> PaqueteCliente:
     validar_catalogos(db, datos.paquete_id, datos.tipo_id)
-    inicio = datos.fecha_inicio or datos.fecha_renovacion - dt.timedelta(days=get_settings().ciclo_dias)
-    if datos.fecha_renovacion < inicio:
-        raise HTTPException(422, "La fecha de renovación no puede ser anterior al inicio")
-    p = PaqueteCliente(cliente_id=cliente.id, paquete_id=datos.paquete_id, tipo_id=datos.tipo_id, costo=datos.costo,
-                       fecha_inicio=inicio, fecha_renovacion=datos.fecha_renovacion)
+    inicio = datos.fecha_inicio or hoy_mx()
+    p = PaqueteCliente(cliente_id=cliente.id, paquete_id=datos.paquete_id, tipo_id=tipo_id_ok(datos), costo=datos.costo,
+                       fecha_inicio=inicio, fecha_renovacion=inicio + dt.timedelta(days=get_settings().ciclo_dias))
     db.add(p)
     db.flush()
     return p
@@ -162,6 +163,7 @@ def ficha(cliente_id: int, db: Session = Depends(get_db), user: Usuario = Depend
 def editar(cliente_id: int, datos: ClientePatch, db: Session = Depends(get_db),
            user: Usuario = Depends(require_writer)):
     c = obtener_cliente(db, user, cliente_id)
+    bloqueo.exigir_libre(db, c.id, hoy_mx())
     campos = datos.model_dump(exclude_unset=True)
     if "nombre" in campos and campos["nombre"]:
         c.nombre = campos["nombre"].strip()
@@ -193,6 +195,7 @@ def eliminar(cliente_id: int, confirmar_nombre: str, db: Session = Depends(get_d
              user: Usuario = Depends(require_writer)):
     """Borrado definitivo con doble confirmación: hay que escribir el nombre exacto del cliente."""
     c = obtener_cliente(db, user, cliente_id)
+    bloqueo.exigir_libre(db, c.id, hoy_mx())
     if confirmar_nombre != c.nombre:
         raise HTTPException(422, "El nombre escrito no coincide con el del cliente")
     bitacora.registrar(db, user, "borrar_cliente", {"cliente_id": c.id, "nombre": c.nombre, "cm_id": c.cm_id})

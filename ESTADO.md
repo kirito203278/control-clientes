@@ -59,3 +59,25 @@ CICLO_DIAS=30, TOLERANCIA_DIAS=3, PRORROGA_MAX_DIAS=15, AVISO_DIAS_ANTES_RENOVAC
 ## Pendiente del usuario
 - Probar con Docker real (aquí no había Docker; todo se probó con Postgres 18 embebido y uvicorn).
 - Desplegar siguiendo docs/DESPLIEGUE.md. docs/FASE0_endpoints.md es el diseño inicial; la API final difiere (prefijos /api/clientes, /api/paquetes...).
+
+## REGLAS ACTUALIZADAS (reemplazan a las anteriores donde choquen)
+- **Sin tolerancia de pago.** El contrato termina el día de renovación R a las 23:59 (México). Desde R+1 el paquete queda **bloqueado**
+  (se calcula por la fecha, no depende del job): ventana que no se puede cerrar con las salidas válidas:
+  *Renovó* (solo si ya pagó completo) · *No renovó* · *Solicitó prórroga* (solo si debe y solo una vez). Mientras haya un paquete
+  bloqueado, toda escritura sobre ese cliente se rechaza (409 `bloqueado`) salvo esas tres salidas (aplica también a un admin).
+- **Prórroga fija de 5 días naturales** desde que se activa (botón; el CM no elige fecha). Admite pagos parciales o el resto. Si vence
+  sin pago completo: el ciclo se archiva solo, el cliente pasa a No renovados (si era su último paquete) y se deja listo el mensaje
+  para el cliente + aviso al CM. Si se paga completo en la prórroga, vuelve la ventana (Renovó / No renovó). BD: constraint `prorroga_max_5_dias` (NOT VALID: no rechaza filas viejas).
+- **Mensaje al cliente: se envía una sola vez.** Al marcarlo como enviado no se puede generar ni marcar otro del mismo paquete.
+- **Sin decisión:** 2 días con la ventana activa (`dias_para_decidir`); después, a las 00:05, pasa solo a No renovados. Con prórroga, el plazo
+  corre desde el fin de la prórroga si ya pagó.
+- **«No renovará» marcado antes del fin del contrato:** no archiva de inmediato; el job lo archiva al terminar el contrato (se puede deshacer antes).
+  Ya vencido, «No renovó» archiva en el momento.
+- **No renovados se conservan 1 año** (`purga_meses=12`), ya no 3 meses. Regla de reingreso de 2 meses sin cambio.
+- **Fechas automáticas:** al crear un paquete se captura la fecha de **inicio** (renovación = inicio + 30). Al renovar o reingresar el ciclo nuevo empieza
+  **HOY** (el día que se confirma) y renueva en 30 días; no se captura fecha. Cambiar el inicio recalcula la renovación y mueve al cliente de quincena
+  (1ra = días 1-15, 2da = 16 al último día del mes).
+- **Renovó exige el paquete pagado por completo** (si no, prórroga o no renovó). Consecuencia: la columna «Renovados sin pago» del tablero queda para datos históricos.
+- Se retiró la pregunta «¿El cliente pagó?» de las notificaciones: ahora el vencimiento de prórroga actúa solo y deja el mensaje listo.
+- Jobs: `renovaciones` y `prorrogas` a las 00:05 y 12:00; `purga_no_renovados` a las 12:10.
+- Constantes: CICLO_DIAS=30, PRORROGA_MAX_DIAS=5, DIAS_PARA_DECIDIR=2, AVISO_DIAS_ANTES_RENOVACION=4, AVISO_PRORROGA_DIAS=3, PURGA_MESES=12, REINGRESO_MESES=2.

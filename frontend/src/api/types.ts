@@ -13,13 +13,16 @@ export interface Paquete {
   estado: string; estado_efectivo: EstadoPaquete
   renovacion_decision: 'pendiente' | 'si' | 'no'; renovacion_pagada: boolean; semaforo: Semaforo
   prorroga_hasta: string | null; prorroga_registrada_en: string | null; prorroga_dias_restantes: number | null
-  prorroga_vencida: boolean; requiere_prorroga: boolean
+  prorroga_activa: boolean; prorroga_vencida: boolean
+  bloqueado: boolean; opciones_bloqueo: ('renovo' | 'no_renovo' | 'prorroga')[]; limite_decision: string | null
+  no_renovara: boolean
   ciclo_anterior_id: number | null; archivado_en: string | null
 }
 export interface Pago {
   id: number; monto: number; fecha: string; nota: string | null; registrado_por: number
   registrado_por_nombre: string | null; creado_en: string
 }
+export interface Bloqueo extends Paquete { cliente_nombre: string; cm_id: number | null }
 export interface PaqueteDetalle extends Paquete {
   veces_renovado: number; pagos: Pago[]; ciclos: Paquete[]
   renovaciones: { id: number; fecha: string; costo_anterior: number; costo_nuevo: number

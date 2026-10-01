@@ -9,7 +9,7 @@ verifica límites y condiciones del plan gratuito en el panel de cada uno antes 
  navegador ──HTTPS──► Render (1 contenedor: API + interfaz + scheduler) ──► Neon (PostgreSQL)
                           ▲  ▲
    cron-job.org ──POST────┘  └── UptimeRobot (GET /api/health cada 5 min)
-   (12:00 y 12:10, hora de México)
+   (00:05, 12:00 y 12:10, hora de México)
 ```
 
 El contenedor corre **un solo proceso**: el scheduler interno (APScheduler) y el bloqueo de intentos de login viven en memoria.
@@ -78,18 +78,24 @@ resto del equipo (CMs y otros admins; cada contraseña también se muestra una s
 
 ## 4. Jobs programados en cron-job.org (respaldo del scheduler)
 
-Crea cuenta en cron-job.org y **tres** tareas. En todas: **Zona horaria = America/Mexico_City**, método **POST**, y en *Advanced →
+Crea cuenta en cron-job.org y estas tareas. En todas: **Zona horaria = America/Mexico_City**, método **POST**, y en *Advanced →
 Headers* agrega `X-Jobs-Secret` con el valor de `JOBS_SECRET`. Sube el *timeout* al máximo permitido: si el servicio está dormido,
 el primer request tarda hasta ~1 min en despertar. Activa el aviso por correo si una ejecución falla.
 
+Los contratos terminan a las **23:59** del día de renovación, así que `renovaciones` y `prorrogas` corren **dos veces al día**:
+a las 00:05 (para que los bloqueos, archivados y avisos ocurran justo después de esa hora) y a las 12:00 (respaldo y avisos del día).
+
 | Tarea | URL | Horario |
 |---|---|---|
-| Renovaciones (avisos a R-4 y vencidos) | `https://TU-APP.onrender.com/api/jobs/run/renovaciones` | diario 12:00 |
-| Prórrogas (aviso a 3 días y vencidas) | `https://TU-APP.onrender.com/api/jobs/run/prorrogas` | diario 12:00 |
-| Purga de No renovados (3 meses) | `https://TU-APP.onrender.com/api/jobs/run/purga_no_renovados` | diario 12:10 |
+| Renovaciones: aviso a R-4, bloqueo por fecha vencida, archivado de «no renovará» y de quien no decide en 2 días | `https://TU-APP.onrender.com/api/jobs/run/renovaciones` | diario 00:05 **y** 12:00 (2 tareas) |
+| Prórrogas: aviso a 3 días y paso a No renovados si vence sin pago | `https://TU-APP.onrender.com/api/jobs/run/prorrogas` | diario 00:05 **y** 12:00 (2 tareas) |
+| Purga de No renovados (1 año) | `https://TU-APP.onrender.com/api/jobs/run/purga_no_renovados` | diario 12:10 |
+
+> Aunque cron-job.org falle, el bloqueo de un paquete vencido **no depende de los jobs**: el servidor lo calcula por la fecha en cada
+> petición. Los jobs solo hacen los cambios automáticos (archivar, avisos).
 
 Prueba cada una con "Test run": debe responder `200` y `{"ok":true,...}`. Un secreto incorrecto responde `401`.
-Opcional: una tarea GET a `/api/health` a las 11:55 para que el servicio ya esté despierto cuando lleguen las de las 12:00.
+Opcional: una tarea GET a `/api/health` a las 00:00 y a las 11:55 para que el servicio ya esté despierto cuando lleguen las anteriores.
 
 ## 5. Monitoreo con UptimeRobot
 
@@ -114,7 +120,7 @@ Restaurar: `pg_restore --clean --if-exists -d "<cadena de conexión>" respaldo.d
 - [ ] Entras con el admin creado y ves el panel; `/docs` responde 404 (no se expone la documentación de la API).
 - [ ] Creaste un CM de prueba, un cliente con un paquete y registraste un pago.
 - [ ] Descargaste el reporte PDF y el Excel del mes en curso.
-- [ ] Las 3 tareas de cron-job.org responden 200 con "Test run".
+- [ ] Las 5 tareas de cron-job.org responden 200 con "Test run".
 - [ ] UptimeRobot muestra el servicio "Up".
 - [ ] `CORS_ORIGINS` contiene solo tu dominio (nunca `*`).
 - [ ] Guardaste `AES_KEY_B64`, `JOBS_SECRET` y la cadena de Neon en un gestor de contraseñas.

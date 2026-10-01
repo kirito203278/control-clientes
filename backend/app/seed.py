@@ -123,35 +123,37 @@ def sembrar(db: Session, credenciales_path: Path | None = CREDENCIALES_PATH) -> 
     mv = cliente(ana, "Dra. Mariana Vélez", obs="Prefiere contacto por WhatsApp por las tardes.")
     ciclo(mv, "Estándar", "Normal", 2500, 4)                                   # aviso "¿renueva?" hoy (R-4)
     ciclo(mv, "Campaña", "Campaña", 4000, 20, pagos=[(1000, -3)])              # 2º paquete, otra quincena
-    # Ya dijeron que renuevan: el ciclo se cierra ("renovado") y se abre el siguiente con pagado = 0
+    # Ya renovó (pagó completo): el ciclo se cierra ("renovado") y el siguiente empieza HOY (+30 días) con pagado = 0
     th = cliente(ana, "Taller Hermanos Ríos")
     th_viejo = ciclo(th, "Élite", "Dinamita", 4500, 2, estado="renovado", decision="si",
                      pagos=[(4500, -1)])                                       # verde (renovación pagada)
-    ciclo(th, "Élite", "Dinamita", 4500, 32, anterior=th_viejo)
-    eb = cliente(ana, "Estética Bella Vista")
-    eb_viejo = ciclo(eb, "Básico", "Fantasma", 1200, 1, estado="renovado", decision="si",
-                     pagos=[(600, -2)])                                        # amarillo (renovó, falta pagar)
-    ciclo(eb, "Básico", "Fantasma", 1200, 31, anterior=eb_viejo)
+    ciclo(th, "Élite", "Dinamita", 4500, 30, anterior=th_viejo)
+    ciclo(cliente(ana, "Estética Bella Vista"), "Básico", "Fantasma", 1200, 1, pagos=[(600, -2)])   # por vencer, debe 600
     # ---- Beto
     ciclo(cliente(beto, "Gimnasio FuerzaMX"), "Estándar", "Normal", 2500, -2, estado="vencido")   # rojo
     ciclo(cliente(beto, "Café Tlalli"), "Básico", "Normal", 1500, -6, estado="vencido",
-          pagos=[(700, -5)], prorroga=(-4, 3))                                 # prórroga vence en 3 días
+          pagos=[(700, -5)], prorroga=(-2, 3))                                 # prórroga activa: vence en 3 días
     pl = cliente(beto, "Papelería El Lápiz")
     viejo = ciclo(pl, "Estándar", "Normal", 2500, -10, estado="renovado", decision="si",
-                  pagos=[(1500, -12)], prorroga=(-14, -3))                     # prórroga vencida, debe 1000
-    nuevo = ciclo(pl, "Élite", "Normal", 4500, 20, anterior=viejo)             # subió de nivel
+                  pagos=[(2500, -12)])                                         # renovó pagando completo
+    nuevo = ciclo(pl, "Élite", "Normal", 4500, 20, anterior=viejo)             # subió de nivel (contador de renovaciones en 0)
     db.add(Renovacion(ciclo_anterior_id=viejo.id, ciclo_nuevo_id=nuevo.id, paquete_anterior_id=paq["Estándar"],
                       paquete_nuevo_id=paq["Élite"], costo_anterior=Decimal(2500), costo_nuevo=Decimal(4500),
                       fecha=H - dt.timedelta(days=10), registrado_por=beto.id))
+    ic = cliente(beto, "Imprenta Central", estado="no_renovado")               # su prórroga venció sin pago completo
+    p_ic = ciclo(ic, "Estándar", "Normal", 2500, -12, estado="archivado", decision="no", pagos=[(1500, -11)], prorroga=(-12, -7))
+    p_ic.archivado_en = ts_ahora - dt.timedelta(days=6)
+    db.add(ArchivoNoRenovado(cliente_id=ic.id, cm_id=beto.id, motivo="La prórroga venció sin pago completo",
+                             archivado_en=ts_ahora - dt.timedelta(days=6)))
     ciclo(cliente(beto, "Constructora Peña"), "Campaña", "Campaña", 6000, 9, pagos=[(3000, -2)])
     # ---- Carla
-    ciclo(cliente(carla, "Florería Jazmín"), "Básico", "Normal", 1500, 15, pagos=[(1500, -4)])
+    ciclo(cliente(carla, "Florería Jazmín"), "Básico", "Normal", 1500, 15, decision="no", pagos=[(1500, -4)])   # marcado «no renovará»
     ciclo(cliente(carla, "Despacho Contable Orozco"), "Élite", "Normal", 4500, 25)
     ciclo(cliente(carla, "Hotel Casa Azul"), "Estándar", "Dinamita", 2500, 6, pagos=[(1000, -1)])
     # ---- No renovados (distintas antigüedades para probar reingreso y purga)
     no_renovado(cliente(carla, "Veterinaria PatiTas"), 20, "Estándar", "Dinamita", 2500)        # <2 meses
     no_renovado(cliente(beto, "Abarrotes Doña Lucha"), 70, "Básico", "Normal", 1500)            # >=2 meses
-    no_renovado(cliente(ana, "Refaccionaria Del Valle"), 95, "Básico", "Normal", 1500)          # >=3 meses: purga
+    no_renovado(cliente(ana, "Refaccionaria Del Valle"), 370, "Básico", "Normal", 1500)         # >=1 año: purga
     # ---- Por reasignar
     ciclo(cliente(None, "Escuela de Baile Ritmo"), "Básico", "Normal", 1500, 7, por=admin)
 

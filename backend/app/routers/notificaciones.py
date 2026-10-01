@@ -1,27 +1,12 @@
-import datetime as dt
-from decimal import Decimal
-
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.dates import ahora
-from app.deps import get_current_user, require_writer
+from app.deps import get_current_user
 from app.models import Notificacion, Usuario
-from app.routers.paquetes import generar_recordatorio, recordatorio_out
-from app.services import ciclos
-from app.services import pagos as pagos_svc
-from app.services.scope import obtener_paquete
 
 router = APIRouter(prefix="/api/notificaciones", tags=["notificaciones"])
-
-
-class RespuestaIn(BaseModel):
-    pago: str = Field(pattern="^(si|no)$")
-    monto: Decimal | None = Field(default=None, gt=0, max_digits=10, decimal_places=2)
-    fecha: dt.date | None = None
 
 
 def _out(n: Notificacion) -> dict:
@@ -65,30 +50,3 @@ def leer(nid: int, db: Session = Depends(get_db), user: Usuario = Depends(get_cu
     n.leida = True
     db.commit()
     return _out(n)
-
-
-@router.post("/{nid}/responder")
-def responder(nid: int, datos: RespuestaIn, db: Session = Depends(get_db), user: Usuario = Depends(require_writer)):
-    """Pregunta '¿El cliente pagó?' de una prórroga vencida.
-    Sí -> captura el pago (monto). No -> genera el recordatorio para el cliente (texto + wa.me)."""
-    n = _propia(db, user, nid)
-    if not n.requiere_respuesta:
-        raise HTTPException(409, "Esta notificación no requiere respuesta")
-    if n.respondida_en is not None:
-        raise HTTPException(409, "Esta pregunta ya fue respondida")
-    p = obtener_paquete(db, user, n.paquete_id)      # 404 si el cliente ya no es de su cartera
-    resultado: dict = {}
-    if datos.pago == "si":
-        if datos.monto is None:
-            raise HTTPException(422, "Indica el monto que pagó el cliente")
-        pagos_svc.registrar_pago(db, user, p, datos.monto, datos.fecha, "Pago tras prórroga vencida")
-        db.refresh(p)
-        resultado["paquete"] = ciclos.paquete_out(p, ahora().date())
-    else:
-        if p.costo - ciclos.pagado_hasta(p) <= 0:
-            raise HTTPException(422, "El paquete ya no tiene saldo pendiente")
-        r = generar_recordatorio(db, p, p.cliente.cm_id)
-        resultado["recordatorio"] = recordatorio_out(r, p.cliente.telefono)
-    n.respuesta, n.respondida_en, n.leida = datos.pago, ahora(), True
-    db.commit()
-    return {"notificacion": _out(n), **resultado}

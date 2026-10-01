@@ -1,4 +1,14 @@
-"""Reglas derivadas de un ciclo de paquete: estado efectivo, semáforo, saldo, prórroga."""
+"""Reglas derivadas de un ciclo de paquete: vencimiento, bloqueo, semáforo, saldo y prórroga.
+
+Línea de tiempo (R = fecha de renovación; el contrato termina R a las 23:59, hora de México):
+  * R-4 .. R      aviso «¿renueva?» ("por vencer")
+  * R+1 en adelante, sin decisión  ->  el paquete queda BLOQUEADO (ventana que no se puede cerrar).
+        Opciones: Renovó (solo si ya pagó completo) · No renovó · Solicitó prórroga (solo si debe, una vez)
+  * Prórroga: 5 días naturales fijos desde que se activa; admite pagos parciales o el resto.
+        Si vence sin pago completo -> el cliente pasa solo a No renovados.
+  * Sin decisión: `dias_para_decidir` (2) días de bloqueo y pasa solo a No renovados.
+No hay días de tolerancia de pago.
+"""
 import datetime as dt
 from decimal import Decimal
 
@@ -7,7 +17,7 @@ from app.models import PaqueteCliente
 from app.services.periodos import quincena_de
 
 VIGENTES = ("activo", "vencido")                 # ciclos "abiertos" que cuentan para el cliente
-COBRABLES = ("activo", "vencido", "renovado")    # aún admiten pagos (un ciclo renovado puede conservar deuda)
+COBRABLES = ("activo", "vencido", "renovado")    # aún admiten pagos (un ciclo renovado puede conservar deuda histórica)
 ORDEN_SEMAFORO = {"rojo": 0, "amarillo": 1, "gris": 2, "verde": 3}
 
 
@@ -19,8 +29,46 @@ def pagado_hasta(p: PaqueteCliente, corte: dt.date | None = None) -> Decimal:
     return sum((g.monto for g in p.pagos if corte is None or g.fecha <= corte), Decimal("0"))
 
 
+def pagado_completo(p: PaqueteCliente) -> bool:
+    return pagado_hasta(p) >= p.costo
+
+
+def es_vencido(p: PaqueteCliente, hoy: dt.date) -> bool:
+    """Pasó su fecha de renovación (desde las 23:59 de R) sin decisión. Se deriva de la fecha, no del job."""
+    return p.estado in VIGENTES and p.renovacion_decision == "pendiente" and hoy > p.fecha_renovacion
+
+
+def prorroga_activa(p: PaqueteCliente, hoy: dt.date) -> bool:
+    return p.prorroga_hasta is not None and hoy <= p.prorroga_hasta and not pagado_completo(p)
+
+
+def prorroga_vencida(p: PaqueteCliente, hoy: dt.date) -> bool:
+    return p.prorroga_hasta is not None and hoy > p.prorroga_hasta and not pagado_completo(p)
+
+
+def bloqueado(p: PaqueteCliente, hoy: dt.date) -> bool:
+    """Ventana de bloqueo: vencido sin decisión y sin una prórroga corriendo."""
+    return es_vencido(p, hoy) and not prorroga_activa(p, hoy)
+
+
+def limite_decision(p: PaqueteCliente) -> dt.date:
+    """Último día con la ventana activa. Después (00:05 del día siguiente) pasa solo a No renovados."""
+    base = p.prorroga_hasta or p.fecha_renovacion
+    return base + dt.timedelta(days=get_settings().dias_para_decidir)
+
+
+def opciones_bloqueo(p: PaqueteCliente, hoy: dt.date) -> list[str]:
+    if not bloqueado(p, hoy):
+        return []
+    if pagado_completo(p):
+        return ["renovo", "no_renovo"]
+    return ["no_renovo"] if p.prorroga_hasta is not None else ["no_renovo", "prorroga"]
+
+
 def estado_efectivo(p: PaqueteCliente, hoy: dt.date) -> str:
-    """'por_vencer' no se guarda: es un activo sin decisión al que faltan <= aviso días (aviso = R-4)."""
+    """'vencido' y 'por_vencer' se calculan: no dependen de que haya corrido el job."""
+    if es_vencido(p, hoy):
+        return "vencido"
     if p.estado == "activo" and p.renovacion_decision == "pendiente":
         if 0 <= dias_para_renovar(p, hoy) <= get_settings().aviso_dias_antes_renovacion:
             return "por_vencer"
@@ -29,31 +77,19 @@ def estado_efectivo(p: PaqueteCliente, hoy: dt.date) -> str:
 
 def semaforo(p: PaqueteCliente, hoy: dt.date) -> str:
     """rojo = vencido sin decisión · verde = renovación pagada · amarillo = confirmada sin pago · gris = pendiente."""
-    if p.estado == "vencido" and p.renovacion_decision == "pendiente":
+    if es_vencido(p, hoy):
         return "rojo"
     if p.estado in ("archivado", "eliminado"):
         return "gris"
-    if pagado_hasta(p) >= p.costo:
+    if pagado_completo(p):
         return "verde"
     if p.renovacion_decision == "si":
         return "amarillo"
     return "gris"
 
 
-def prorroga_vencida(p: PaqueteCliente, hoy: dt.date) -> bool:
-    return p.prorroga_hasta is not None and p.prorroga_hasta < hoy and pagado_hasta(p) < p.costo
-
-
-def requiere_prorroga(p: PaqueteCliente, hoy: dt.date) -> bool:
-    """Terminó la tolerancia de pago, sigue debiendo y no hay prórroga registrada."""
-    if p.estado not in COBRABLES or p.prorroga_hasta is not None:
-        return False
-    limite = p.fecha_renovacion + dt.timedelta(days=get_settings().tolerancia_dias)
-    return hoy > limite and pagado_hasta(p) < p.costo
-
-
 def recalcular_pagada(p: PaqueteCliente) -> None:
-    p.renovacion_pagada = pagado_hasta(p) >= p.costo
+    p.renovacion_pagada = pagado_completo(p)
 
 
 def paquete_out(p: PaqueteCliente, hoy: dt.date) -> dict:
@@ -70,10 +106,13 @@ def paquete_out(p: PaqueteCliente, hoy: dt.date) -> dict:
         "dias_para_renovar": dias_para_renovar(p, hoy),
         "estado": p.estado, "estado_efectivo": estado_efectivo(p, hoy),
         "renovacion_decision": p.renovacion_decision, "renovacion_pagada": p.renovacion_pagada,
+        "no_renovara": p.estado in VIGENTES and p.renovacion_decision == "no",   # marcado: se archiva al terminar el contrato
         "semaforo": semaforo(p, hoy),
+        "bloqueado": bloqueado(p, hoy), "opciones_bloqueo": opciones_bloqueo(p, hoy),
+        "limite_decision": limite_decision(p) if es_vencido(p, hoy) else None,
         "prorroga_hasta": p.prorroga_hasta, "prorroga_registrada_en": p.prorroga_registrada_en,
         "prorroga_dias_restantes": (p.prorroga_hasta - hoy).days if p.prorroga_hasta else None,
-        "prorroga_vencida": prorroga_vencida(p, hoy), "requiere_prorroga": requiere_prorroga(p, hoy),
+        "prorroga_activa": prorroga_activa(p, hoy), "prorroga_vencida": prorroga_vencida(p, hoy),
         "ciclo_anterior_id": p.ciclo_anterior_id, "archivado_en": p.archivado_en,
     }
 
