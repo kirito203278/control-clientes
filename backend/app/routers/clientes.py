@@ -85,6 +85,7 @@ def _resumen(c: Cliente, hoy: dt.date, cms: dict[int, str]) -> dict:
     return {"id": c.id, "nombre": c.nombre, "estado": c.estado, "cm_id": c.cm_id,
             "cm_nombre": cms.get(c.cm_id) if c.cm_id else None, "telefono": c.telefono,
             "paquetes_vigentes": len(vig), "semaforo": sem,
+            "pendiente_decision": any(ciclos.bloqueado(p, hoy) for p in vig),
             "quincenas": sorted({ciclos.quincena_de(p.fecha_renovacion) for p in vig}),
             "proxima_renovacion": min((p.fecha_renovacion for p in vig), default=None)}
 

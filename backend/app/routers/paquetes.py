@@ -114,7 +114,7 @@ def registrar_pago(paquete_id: int, datos: PagoIn, db: Session = Depends(get_db)
     p = obtener_paquete(db, user, paquete_id)
     bloqueo.exigir_libre(db, p.cliente_id, hoy_mx())
     g = pagos_svc.registrar_pago(db, user, p, datos.monto, datos.fecha, datos.nota)
-    nuevo = pagos_svc.renovar_si_completa_prorroga(db, user, p)       # pagó dentro de la prórroga -> renueva solo
+    nuevo = renovacion.renovar_si_confirmado_y_pagado(db, user, p)     # confirmó/pidió prórroga y pagó completo -> renueva solo
     hoy = hoy_mx()
     db.commit()
     db.refresh(p)

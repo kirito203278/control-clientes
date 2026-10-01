@@ -93,3 +93,15 @@ CICLO_DIAS=30, TOLERANCIA_DIAS=3, PRORROGA_MAX_DIAS=15, AVISO_DIAS_ANTES_RENOVAC
 - Solicitar prórroga implica que el cliente sigue. En cuanto se **paga completo dentro de los 5 días**, el paquete se **renueva solo** (mismo paquete, tipo y costo;
   el ciclo nuevo empieza el día del pago, +30 días). No se renueva al pedir la prórroga (el ciclo anterior seguiría sin pagarse). Para cambiar de paquete se usa la siguiente renovación.
 - Con la prórroga activa ya no se muestran «Renovó / No renovó»: no hay nada que decidir. Si no se completa a los 5 días, pasa a No renovados.
+
+## Los tres casos de «no me han contestado» (reglas vigentes; reemplazan a las anteriores donde choquen)
+- **La ventana vive DENTRO del cliente/paquete** (no bloquea el sistema): con los demás clientes se trabaja normal. En el panel del CM sale un aviso con los pendientes, el cliente lleva la marca «decidir» en la lista y el tablero lo marca. El servidor traba solo las escrituras de ESE cliente (409 `bloqueado`).
+- **Caso 1 – no contesta:** al terminar el contrato (R 23:59) la ventana pregunta **«¿va a renovar o no?»**. Tolerancia de **2 días** (solo en este caso); sin respuesta pasa a No renovados.
+  Si contesta **«sí va a renovar»**: se habilitan las funciones; **ese día es el inicio del nuevo contrato** y **no hay tolerancia de pago**: a las 23:59 de ese mismo día, si no pagó, la ventana pregunta
+  **prórroga o no renovó** (sin plazo automático: queda pendiente hasta que el CM decida). Si ya pagó, se renueva en el momento.
+- **Caso 2 – dijo que no renovará** (casilla «No renovará»): se archiva solo al terminar el contrato; no hay ventana. Se puede deshacer antes.
+- **Caso 3 – confirmó que renovará pero no ha pagado** (botón «Confirmó que renovará», antes de R): semáforo amarillo; en cuanto paga completo se renueva solo; al terminar el contrato se bloquea y pregunta por la prórroga.
+- **Inicio del nuevo contrato = el día que se confirma** (`confirmado_en`), aunque el pago se complete después en la prórroga (renovación = inicio + 30). Auto-renovación al pagar completo si ya confirmó o pidió prórroga (mismo paquete y costo; el cambio de paquete es en la siguiente renovación).
+- **«No renovó» tiene dos alcances:** solo este paquete, o **todo el cliente** (se archivan todos sus paquetes vigentes y pasa a No renovados). Antes de que termine el contrato solo existe «no renovará» por paquete (programado).
+- La prórroga solo se ofrece a quien ya confirmó que renovará y no ha pagado (una vez, 5 días).
+- BD: `gracia_hasta` (004) y `confirmado_en` (005).

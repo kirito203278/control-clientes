@@ -127,7 +127,7 @@ def sembrar(db: Session, credenciales_path: Path | None = CREDENCIALES_PATH) -> 
     th_viejo = ciclo(th, "Élite", "Dinamita", 4500, 2, estado="renovado", decision="si",
                      pagos=[(4500, -1)])                                       # verde (renovación pagada)
     ciclo(th, "Élite", "Dinamita", 4500, 30, anterior=th_viejo)
-    ciclo(cliente(ana, "Estética Bella Vista"), "Básico", "Fantasma", 1200, 1, pagos=[(600, -2)])   # por vencer, debe 600
+    ciclo(cliente(ana, "Estética Bella Vista"), "Básico", "Fantasma", 1200, 1, decision="si", pagos=[(600, -2)])   # confirmó que renueva, debe 600 (amarillo)
     # ---- Beto
     ciclo(cliente(beto, "Gimnasio FuerzaMX"), "Estándar", "Normal", 2500, -2, estado="vencido")   # rojo
     ciclo(cliente(beto, "Café Tlalli"), "Básico", "Normal", 1500, -6, estado="vencido",

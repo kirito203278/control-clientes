@@ -52,7 +52,8 @@ export default function ClienteFicha({ clienteId, paqueteInicial, onChanged, onD
         {escribe && !enNoRenovados && <button className="btn btn-secondary btn-sm right" onClick={() => setModal('agregar')}>+ Agregar paquete</button>}
       </div>
       {user?.rol === 'admin' && puedeEscribir && <p className="muted" style={{ margin: '0 0 8px', fontSize: 13 }}>Operas por cuenta del CM: tus acciones quedan en la bitácora.</p>}
-      {hayBloqueo && <div className="callout callout-bad"><strong>Contrato terminado sin decisión.</strong> Mientras no indiques si renovó, no renovó o solicitaste prórroga, este cliente queda bloqueado.</div>}
+      {puedeEscribir && ficha.paquetes.filter((p) => p.bloqueado).map((p) => <VentanaDecision key={p.id} p={p} ficha={ficha} avisar={avisar} onHecho={(sel) => recargarTodo(sel)} />)}
+      {!puedeEscribir && hayBloqueo && <div className="callout callout-bad"><strong>Contrato terminado sin decisión.</strong> Tu cuenta es de solo lectura: lo resuelve el CM.</div>}
       {enNoRenovados && <div className="callout callout-warn">Este cliente está en «No renovados» desde el {fecha(ficha.no_renovado_desde)}. Para reactivarlo usa <strong>No renovados → Reingresar</strong>.</div>}
 
       <DatosCliente ficha={ficha} puedeEscribir={escribe} onGuardado={(f) => { setFicha(f); onChanged(); avisar('Datos guardados') }} onEliminado={onDeleted} />
@@ -200,9 +201,6 @@ function Paquetes({ ficha, paqueteId, setPaqueteId, puedeEscribir, hayBloqueo, r
           </div>
           {escribe && vigente && <div style={{ textAlign: 'right' }}><button className="btn btn-ghost btn-sm" onClick={() => setModal('editar')}>Editar paquete</button></div>}
 
-          {det.bloqueado && <Bloqueado det={det} puedeEscribir={puedeEscribir} onRenovo={() => setModal('renovar')} onNoRenovo={() => setModal('no')}
-            onProrroga={async () => { try { await api.post(`/paquetes/${det.id}/prorroga`); await cambio(); avisar('Prórroga activada: 5 días naturales') } catch (e) { avisar(msg(e, 'No se pudo activar')) } }} />}
-
           <Pagos det={det} puedeEscribir={escribe} alCambiar={cambio} avisar={avisar} />
           <Prorroga det={det} />
 
@@ -213,15 +211,27 @@ function Paquetes({ ficha, paqueteId, setPaqueteId, puedeEscribir, hayBloqueo, r
             {det.no_renovara && <span className="badge badge-neutral">Marcado: no renovará</span>}
             {!det.no_renovara && det.renovacion_decision !== 'pendiente' && <span className="badge badge-purple">Decisión: {det.renovacion_decision === 'si' ? 'renovó' : 'no renovó'}</span>}
           </div>
-          {det.prorroga_activa && <div className="callout callout-info">Con la prórroga activa no hay nada que decidir: <strong>en cuanto se pague lo que falta ({dinero(det.restante)}) el paquete se renueva solo</strong> (mismo paquete y costo; el ciclo nuevo empieza ese día). Si no se completa el {fecha(det.prorroga_hasta)}, el cliente pasa a No renovados.</div>}
+          {det.prorroga_activa && <div className="callout callout-info">Con la prórroga activa no hay nada que decidir: <strong>en cuanto se pague lo que falta ({dinero(det.restante)}) el paquete se renueva solo</strong> (mismo paquete y costo; el ciclo nuevo empieza ese día). Si no se completa el {fecha(det.prorroga_hasta)}, el cliente pasa a No renovados.
+            <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>Si el cliente quiere cambiar de paquete en esa renovación, no se puede en ese momento: se renueva igual y el cambio se hace en la siguiente renovación.</div></div>}
           {vigente && det.estado_efectivo === 'por_vencer' && <div className="callout callout-warn">Este paquete renueva pronto: pregúntale al cliente si renueva.</div>}
           {det.no_renovara && (
             <div className="callout callout-info">Se archivará solo al terminar su contrato ({fecha(det.fecha_renovacion)} a las 11:59 pm) y, si es su último paquete, el cliente pasará a «No renovados».
-              {escribe && <button className="btn btn-ghost btn-sm" style={{ marginLeft: 8 }} onClick={async () => { try { await api.post(`/paquetes/${det.id}/revertir-no-renovara`); await cambio(); avisar('Marca deshecha') } catch (e) { avisar(msg(e, 'No se pudo deshacer')) } }}>Deshacer</button>}</div>)}
-          {escribe && vigente && !det.no_renovara && !det.prorroga_activa && (
+              {escribe && <button className="btn btn-ghost btn-sm" style={{ marginLeft: 8 }} onClick={async () => { try { await api.post(`/paquetes/${det.id}/revertir-decision`); await cambio(); avisar('Marca deshecha') } catch (e) { avisar(msg(e, 'No se pudo deshacer')) } }}>Deshacer</button>}</div>)}
+          {det.confirmo_renovacion && !det.prorroga_activa && (
+            <div className="callout callout-warn">
+              <strong>Confirmó que renovará</strong> el {fecha(det.confirmado_en)}: ese día es el inicio del nuevo contrato.{det.restante > 0 ? <> Aún debe {dinero(det.restante)}; en cuanto pague completo el paquete se renueva solo (mismo paquete y costo).
+                Si no ha pagado al terminar el día {det.gracia_hasta ? fecha(det.gracia_hasta) : fecha(det.fecha_renovacion)} a las 11:59 pm, se bloquea y se te preguntará por la prórroga (sin tolerancia).</> : ''}
+              <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>Si el cliente quiere cambiar de paquete en esa renovación, no se puede en ese momento: se renueva igual y el cambio se hace en la siguiente renovación.</div>
+              {escribe && det.estado === 'activo' && !det.bloqueado && <button className="btn btn-ghost btn-sm" style={{ marginTop: 4 }} onClick={async () => { try { await api.post(`/paquetes/${det.id}/revertir-decision`); await cambio(); avisar('Confirmación deshecha') } catch (e) { avisar(msg(e, 'No se pudo deshacer')) } }}>Deshacer confirmación</button>}
+            </div>)}
+          {escribe && vigente && !det.no_renovara && !det.prorroga_activa && !det.bloqueado && (
             <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
-              <button className="btn btn-primary" onClick={() => setModal('renovar')}>Renovó</button>
-              <button className="btn btn-secondary" onClick={() => setModal('no')}>{det.estado_efectivo === 'vencido' ? 'No renovó' : 'No renovará'}</button>
+              {!det.confirmo_renovacion && <button className="btn btn-primary" onClick={async () => {
+                try { const r = await api.post<{ renovado_automaticamente: number | null }>(`/paquetes/${det.id}/confirmar-renovacion`)
+                  await cambio(r.renovado_automaticamente); avisar(r.renovado_automaticamente ? 'Pagado y confirmado: se renovó (ciclo nuevo desde hoy)' : 'Confirmado: falta el pago para renovar') }
+                catch (e) { avisar(msg(e, 'No se pudo confirmar')) } }}>Confirmó que renovará</button>}
+              <button className="btn btn-secondary" onClick={() => setModal('renovar')}>Renovó (ya pagó)</button>
+              <button className="btn btn-secondary" onClick={() => setModal('no')}>No renovará</button>
             </div>)}
           {det.restante > 0 && escribe && det.estado !== 'archivado' && (
             <div style={{ marginTop: 14 }}>
@@ -293,23 +303,48 @@ function Pagos({ det, puedeEscribir, alCambiar, avisar }: { det: PaqueteDetalle;
 }
 
 /* ----------------------------------------------------------------------------- bloqueo y prórroga */
-function Bloqueado({ det, puedeEscribir, onRenovo, onNoRenovo, onProrroga }: {
-  det: PaqueteDetalle; puedeEscribir: boolean; onRenovo: () => void; onNoRenovo: () => void; onProrroga: () => void
-}) {
-  const op = det.opciones_bloqueo
+/** Ventana de decisión DENTRO del cliente: no bloquea el resto del sistema, solo a este cliente. */
+function VentanaDecision({ p, ficha, onHecho, avisar }: { p: Paquete; ficha: Ficha; onHecho: (sel?: number | null) => void; avisar: (t: string) => void }) {
+  const [modal, setModal] = useState<'renovar' | 'no' | null>(null)
+  const [trabajando, setTrabajando] = useState(false)
+  const op = p.opciones_bloqueo
+  const confirmado = p.renovacion_decision === 'si'
+
+  async function llamar(f: () => Promise<void>) {
+    setTrabajando(true)
+    try { await f() } catch (e) { avisar(msg(e, 'No se pudo completar')) } finally { setTrabajando(false) }
+  }
+  const vaARenovar = () => llamar(async () => {
+    const r = await api.post<{ renovado_automaticamente: number | null }>(`/paquetes/${p.id}/confirmar-renovacion`)
+    avisar(r.renovado_automaticamente ? 'Renovado: el ciclo nuevo empieza hoy' : 'Confirmado: se habilitan las funciones de este cliente')
+    onHecho(r.renovado_automaticamente)
+  })
+  const prorroga = () => llamar(async () => { await api.post(`/paquetes/${p.id}/prorroga`); avisar('Prórroga activada: 5 días naturales'); onHecho() })
+
   return (
-    <div className="callout callout-bad" style={{ padding: 16, marginTop: 16 }}>
-      <strong style={{ fontSize: 15 }}>Terminó el contrato de este paquete ({fecha(det.fecha_renovacion)}, 11:59 pm)</strong>
-      <p style={{ margin: '6px 0 10px' }}>
-        {det.restante > 0 ? `El cliente debe ${dinero(det.restante)}. ` : 'Está pagado por completo. '}
-        Elige una opción{det.limite_decision ? `; si no decides, pasa a No renovados el ${fecha(sumarDias(det.limite_decision, 1))}` : ''}.
+    <div className="callout callout-bad" style={{ padding: 18, marginTop: 14 }} role="alertdialog" aria-label="Decisión pendiente">
+      <strong style={{ fontSize: 16 }}>Terminó el contrato de «{p.paquete}» el {fecha(p.fecha_renovacion)} a las 11:59 pm</strong>
+      <p style={{ margin: '8px 0 4px' }}>
+        {op.includes('va_a_renovar') && <>Aún no hay respuesta del cliente. <strong>¿Va a renovar o no?</strong></>}
+        {op.includes('renovo') && <>El paquete está pagado por completo. <strong>¿Renovó?</strong></>}
+        {op.includes('prorroga') && <>Confirmó que renovará pero <strong>aún debe {dinero(p.restante)}</strong>. <strong>¿Solicita prórroga o no renovó?</strong></>}
+        {!op.includes('prorroga') && confirmado && op.includes('no_renovo') && !op.includes('renovo') && <>Ya usó su prórroga y sigue debiendo {dinero(p.restante)}.</>}
       </p>
-      {puedeEscribir ? (
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          {op.includes('renovo') && <button className="btn btn-primary" onClick={onRenovo}>Renovó</button>}
-          {op.includes('prorroga') && <button className="btn btn-secondary" onClick={onProrroga}>Solicitó prórroga (5 días)</button>}
-          {op.includes('no_renovo') && <button className="btn btn-secondary" onClick={onNoRenovo}>No renovó</button>}
-        </div>) : <span className="muted">Tu cuenta es de solo lectura.</span>}
+      <p className="muted" style={{ margin: '0 0 12px', fontSize: 13 }}>
+        Este cliente queda en pausa hasta que lo resuelvas; <strong>con los demás clientes sigues trabajando normal</strong>.
+        {p.limite_decision && <> Si no decides, el {fecha(sumarDias(p.limite_decision, 1))} pasa automáticamente a No renovados.</>}
+      </p>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        {op.includes('va_a_renovar') && <button className="btn btn-primary" disabled={trabajando} onClick={vaARenovar}>Sí, va a renovar</button>}
+        {op.includes('renovo') && <button className="btn btn-primary" disabled={trabajando} onClick={() => setModal('renovar')}>Renovó</button>}
+        {op.includes('prorroga') && <button className="btn btn-primary" disabled={trabajando} onClick={prorroga}>Solicitó prórroga (5 días)</button>}
+        {op.includes('no_renovo') && <button className="btn btn-secondary" disabled={trabajando} onClick={() => setModal('no')}>No renovó</button>}
+      </div>
+      {op.includes('va_a_renovar') && <p className="muted" style={{ fontSize: 12, margin: '10px 0 0' }}>«Sí, va a renovar» marca <strong>hoy ({fecha(hoyIso())})</strong> como el inicio del nuevo contrato y habilita las funciones de este cliente el resto del día. No hay tolerancia de pago: a las 11:59 pm, si no ha pagado, se te preguntará por la prórroga o si no renovó.</p>}
+      {op.includes('prorroga') && <p className="muted" style={{ fontSize: 12, margin: '10px 0 0' }}>La prórroga dura 5 días naturales desde hoy (la fecha es automática). En ese plazo se acepta el pago parcial o el resto y, al completarlo, el paquete se renueva solo.</p>}
+      {modal === 'renovar' && <RenovarModal p={p} onClose={() => setModal(null)} onHecho={(id) => { setModal(null); avisar('Renovado: se abrió un ciclo nuevo'); onHecho(id) }} />}
+      {modal === 'no' && <NoRenovarModal p={p} esUltimo={ficha.paquetes.length === 1} nombreCliente={ficha.nombre} onClose={() => setModal(null)}
+        onHecho={() => { setModal(null); avisar('Pasó a No renovados'); onHecho() }} />}
     </div>
   )
 }

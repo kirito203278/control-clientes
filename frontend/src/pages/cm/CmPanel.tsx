@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api } from '../../api/client'
-import type { ClienteListItem } from '../../api/types'
+import type { Bloqueo, ClienteListItem } from '../../api/types'
 import { useAuth } from '../../auth/AuthContext'
-import BloqueoModal from '../../components/BloqueoModal'
 import Logo from '../../components/Logo'
 import NotificationBell from '../../components/NotificationBell'
 import { Semaforo } from '../../components/ui'
@@ -23,10 +22,17 @@ export default function CmPanel() {
   const [vista, setVista] = useState<Vista>({ tipo: 'tablero' })
   const [agregando, setAgregando] = useState(false)
   const [busqueda, setBusqueda] = useState('')
-  const [version, setVersion] = useState(0)          // se incrementa al resolver un bloqueo para recargar la vista actual
+  const version = 0
+  const [pendientes, setPendientes] = useState<Bloqueo[]>([])
 
   const cargar = useCallback(() => api.get<ClienteListItem[]>(`/clientes?quincena=${quincena}`).then(setClientes), [quincena])
+  const cargarPendientes = useCallback(() => api.get<Bloqueo[]>('/bloqueos').then(setPendientes).catch(() => undefined), [])
   useEffect(() => { cargar() }, [cargar])
+  useEffect(() => {
+    cargarPendientes()
+    const t = setInterval(cargarPendientes, 60_000)
+    return () => clearInterval(t)
+  }, [cargarPendientes, version])
 
   const abrir = (id: number, paquete: number | null = null) => setVista({ tipo: 'cliente', id, paquete })
   const visibles = clientes.filter((c) => c.nombre.toLowerCase().includes(busqueda.toLowerCase()))
@@ -58,6 +64,7 @@ export default function CmPanel() {
             <button key={c.id} className={`cm-sidebar-item ${vista.tipo === 'cliente' && vista.id === c.id ? 'active' : ''}`} onClick={() => abrir(c.id)}>
               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.nombre}</span>
               <span style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                {c.pendiente_decision && <span className="badge badge-bad" title="Contrato terminado: decide si renovó" style={{ padding: '0 6px' }}>decidir</span>}
                 {c.quincenas.length === 2 && <span className="badge badge-neutral" title="Tiene paquetes en ambas quincenas" style={{ padding: '0 6px' }}>1·2</span>}
                 <Semaforo valor={c.semaforo} /></span>
             </button>))}
@@ -71,7 +78,14 @@ export default function CmPanel() {
       </aside>
 
       <main className="cm-main">
-        {vista.tipo === 'cliente' && <ClienteFicha key={`${vista.id}-${version}`} clienteId={vista.id} paqueteInicial={vista.paquete} onChanged={cargar}
+        {pendientes.length > 0 && (
+          <div className="callout callout-bad" style={{ marginTop: 0 }} role="status">
+            <strong>{pendientes.length === 1 ? 'Hay 1 paquete' : `Hay ${pendientes.length} paquetes`} con el contrato terminado por decidir.</strong> Solo se pausa ese cliente; con los demás sigues normal.
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
+              {pendientes.map((b) => <button key={b.id} className="btn btn-secondary btn-sm" onClick={() => abrir(b.cliente_id, b.id)}>{b.cliente_nombre} · {b.paquete}</button>)}
+            </div>
+          </div>)}
+        {vista.tipo === 'cliente' && <ClienteFicha key={`${vista.id}-${version}`} clienteId={vista.id} paqueteInicial={vista.paquete} onChanged={() => { cargar(); cargarPendientes() }}
           onDeleted={() => { cargar(); setVista({ tipo: 'tablero' }) }} />}
         {vista.tipo === 'tablero' && <Tablero key={version} onAbrir={(c, p) => abrir(c, p)} />}
         {vista.tipo === 'ingresos' && <Ingresos key={version} onAbrirCliente={(id) => abrir(id)} />}
@@ -79,7 +93,6 @@ export default function CmPanel() {
         {vista.tipo === 'no_renovados' && <NoRenovados key={version} onAbrir={(id) => abrir(id)} onCambio={cargar} />}
       </main>
 
-      <BloqueoModal onResuelto={() => { cargar(); setVersion((n) => n + 1) }} />
       {agregando && <AgregarClienteModal onClose={() => setAgregando(false)} onHecho={(id) => { setAgregando(false); cargar(); abrir(id) }} />}
     </div>
   )

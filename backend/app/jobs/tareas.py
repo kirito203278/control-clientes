@@ -46,28 +46,34 @@ def avisos_renovacion(db: Session, hoy: dt.date | None = None) -> dict:
                 archivar(db, p, "No renovó (marcado por el CM)")
                 programados += 1
             continue
-        if p.renovacion_decision != "pendiente":
-            continue
+        confirmado = p.renovacion_decision == "si"
         if dias >= 0:
-            if p.estado == "activo":
+            if p.estado == "activo" and not confirmado:
                 avisos += notificar.crear(
                     db, c, "renovacion_3d",
                     f"{c.nombre}: el paquete {p.paquete.nombre} renueva el {_fmt(p.fecha_renovacion)} "
                     f"({'hoy' if dias == 0 else 'mañana' if dias == 1 else f'en {dias} días'}). ¿Renueva?",
                     f"renov:{p.id}", paquete_id=p.id)
             continue
-        # Ya pasó su fecha sin decisión
-        if hoy > ciclos.limite_decision(p) and not ciclos.prorroga_activa(p, hoy):
-            archivar(db, p, "Sin decisión: no renovó")
+        # Ya pasó su fecha sin renovarse (sin decisión, o confirmó que renueva pero no ha pagado)
+        if ciclos.prorroga_activa(p, hoy) or ciclos.gracia_activa(p, hoy):
+            continue
+        limite = ciclos.limite_decision(p)       # solo existe si NO ha contestado (2 días); quien confirmó no tiene plazo
+        if limite is not None and hoy > limite:
+            archivar(db, p, "No renovó: sin decisión")
             auto_no_renueva += 1
             continue
         if p.estado != "vencido":
             p.estado = "vencido"
-        vencidos += notificar.crear(
-            db, c, "paquete_vencido",
-            f"{c.nombre}: terminó el contrato del paquete {p.paquete.nombre} ({_fmt(p.fecha_renovacion)}). "
-            f"Indica si renovó, no renovó o solicitó prórroga; si no decides pasa a No renovados el "
-            f"{_fmt(ciclos.limite_decision(p) + dt.timedelta(days=1))}.", f"vencido:{p.id}", paquete_id=p.id)
+        if confirmado:
+            texto = (f"{c.nombre}: terminó el contrato del paquete {p.paquete.nombre} y aún no paga. "
+                     f"Indica si solicita prórroga o si no renovó.")
+            clave = f"vencido-si:{p.id}:{p.gracia_hasta}"
+        else:
+            texto = (f"{c.nombre}: terminó el contrato del paquete {p.paquete.nombre} ({_fmt(p.fecha_renovacion)}). "
+                     f"Indica si va a renovar o no; si no decides pasa a No renovados el {_fmt(limite + dt.timedelta(days=1))}.")
+            clave = f"vencido:{p.id}"
+        vencidos += notificar.crear(db, c, "paquete_vencido", texto, clave, paquete_id=p.id)
     db.commit()
     return {"avisos": avisos, "marcados_vencidos": vencidos, "pasaron_a_no_renovados": auto_no_renueva + programados}
 

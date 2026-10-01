@@ -149,7 +149,9 @@ export function RenovarModal({ p, onClose, onHecho }: { p: Paquete; onClose: () 
 export function NoRenovarModal({ p, esUltimo, nombreCliente, onClose, onHecho }: {
   p: Paquete; esUltimo: boolean; nombreCliente: string; onClose: () => void; onHecho: (r: { cliente_eliminado: boolean; cliente_a_no_renovados: boolean; programado?: boolean }) => void
 }) {
+  const [alcance, setAlcance] = useState<'paquete' | 'cliente'>('paquete')
   const [accion, setAccion] = useState<'conservar' | 'borrar'>('conservar')
+  const terminado = p.bloqueado || p.dias_para_renovar < 0     // contrato ya terminado: se puede elegir paquete o cliente completo
   const [confirma, setConfirma] = useState('')
   const [preguntaCliente, setPreguntaCliente] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -157,6 +159,11 @@ export function NoRenovarModal({ p, esUltimo, nombreCliente, onClose, onHecho }:
   async function enviar(eliminarCliente?: boolean) {
     setError(null)
     try {
+      if (alcance === 'cliente') {
+        await api.post(`/clientes/${p.cliente_id}/no-renovar`)
+        onHecho({ cliente_eliminado: false, cliente_a_no_renovados: true })
+        return
+      }
       const r = await api.post<{ cliente_eliminado: boolean; cliente_a_no_renovados: boolean; programado?: boolean }>(`/paquetes/${p.id}/no-renovar`,
         { accion, confirmar_nombre: accion === 'borrar' ? confirma : null, eliminar_cliente: eliminarCliente ?? null })
       onHecho(r)
@@ -180,6 +187,17 @@ export function NoRenovarModal({ p, esUltimo, nombreCliente, onClose, onHecho }:
 
   return (
     <Modal title={`No renovó · ${p.paquete}`} onClose={onClose} width={520}>
+      {terminado && (
+        <div className="segmented light full" style={{ marginBottom: 14 }}>
+          <button className={alcance === 'paquete' ? 'active' : ''} onClick={() => setAlcance('paquete')}>Solo este paquete</button>
+          <button className={alcance === 'cliente' ? 'active' : ''} onClick={() => setAlcance('cliente')}>Todo el cliente</button>
+        </div>)}
+      {alcance === 'cliente' ? (
+        <div className="callout callout-bad" style={{ marginTop: 0 }}>
+          <strong>{nombreCliente}</strong> deja de ser cliente activo: <strong>todos sus paquetes vigentes se archivan</strong> y pasa a «No renovados»
+          (se conserva 1 año con toda su información).
+        </div>
+      ) : (<>
       <div className="segmented light full" style={{ marginBottom: 14 }}>
         <button className={accion === 'conservar' ? 'active' : ''} onClick={() => setAccion('conservar')}>Conservar en historial</button>
         <button className={accion === 'borrar' ? 'active' : ''} onClick={() => setAccion('borrar')}>Borrar paquete</button>
@@ -197,9 +215,11 @@ export function NoRenovarModal({ p, esUltimo, nombreCliente, onClose, onHecho }:
           <div className="field"><input type="text" placeholder={p.paquete} value={confirma} onChange={(e) => setConfirma(e.target.value)} autoFocus /></div>
         </>
       )}
+      </>)}
       <ErrorTexto texto={error} />
-      <Botones onClose={onClose} onOk={() => enviar()} danger={accion === 'borrar'}
-        okText={accion === 'borrar' ? 'Borrar paquete' : 'Marcar como no renovado'} disabled={accion === 'borrar' && confirma !== p.paquete} />
+      <Botones onClose={onClose} onOk={() => enviar()} danger={alcance === 'cliente' || accion === 'borrar'}
+        okText={alcance === 'cliente' ? 'Pasar el cliente a No renovados' : accion === 'borrar' ? 'Borrar paquete' : 'Marcar como no renovado'}
+        disabled={alcance === 'paquete' && accion === 'borrar' && confirma !== p.paquete} />
     </Modal>
   )
 }

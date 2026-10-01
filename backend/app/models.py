@@ -75,6 +75,8 @@ class PaqueteCliente(Base):
     renovacion_pagada: Mapped[bool] = mapped_column(Boolean, default=False)
     prorroga_hasta: Mapped[dt.date | None] = mapped_column(Date)
     prorroga_registrada_en: Mapped[dt.date | None] = mapped_column(Date)
+    gracia_hasta: Mapped[dt.date | None] = mapped_column(Date)
+    confirmado_en: Mapped[dt.date | None] = mapped_column(Date)
     ciclo_anterior_id: Mapped[int | None] = mapped_column(ForeignKey("paquetes_cliente.id"))
     archivado_en: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
     creado_en: Mapped[dt.datetime] = _ts()

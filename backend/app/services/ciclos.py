@@ -34,8 +34,9 @@ def pagado_completo(p: PaqueteCliente) -> bool:
 
 
 def es_vencido(p: PaqueteCliente, hoy: dt.date) -> bool:
-    """Pasó su fecha de renovación (desde las 23:59 de R) sin decisión. Se deriva de la fecha, no del job."""
-    return p.estado in VIGENTES and p.renovacion_decision == "pendiente" and hoy > p.fecha_renovacion
+    """Pasó su fecha de renovación (desde las 23:59 de R) sin renovarse y sin que esté marcado «no renovará».
+    Incluye a quien YA confirmó que renovará pero no ha pagado. Se deriva de la fecha, no del job."""
+    return p.estado in VIGENTES and p.renovacion_decision in ("pendiente", "si") and hoy > p.fecha_renovacion
 
 
 def prorroga_activa(p: PaqueteCliente, hoy: dt.date) -> bool:
@@ -46,23 +47,42 @@ def prorroga_vencida(p: PaqueteCliente, hoy: dt.date) -> bool:
     return p.prorroga_hasta is not None and hoy > p.prorroga_hasta and not pagado_completo(p)
 
 
+def gracia_activa(p: PaqueteCliente, hoy: dt.date) -> bool:
+    """Confirmó «va a renovar» dentro de la ventana: funciones habilitadas SOLO el resto de ese día (sin tolerancia de pago);
+    a las 23:59 vuelve la ventana con prórroga / no renovó."""
+    return p.gracia_hasta is not None and hoy <= p.gracia_hasta and not pagado_completo(p)
+
+
+def confirmo_renovacion(p: PaqueteCliente) -> bool:
+    return p.estado in VIGENTES and p.renovacion_decision == "si"
+
+
 def bloqueado(p: PaqueteCliente, hoy: dt.date) -> bool:
-    """Ventana de bloqueo: vencido sin decisión y sin una prórroga corriendo."""
-    return es_vencido(p, hoy) and not prorroga_activa(p, hoy)
+    """Ventana de decisión (solo para ESE cliente): vencido y sin prórroga ni gracia corriendo."""
+    return es_vencido(p, hoy) and not prorroga_activa(p, hoy) and not gracia_activa(p, hoy)
 
 
-def limite_decision(p: PaqueteCliente) -> dt.date:
-    """Último día con la ventana activa. Después (00:05 del día siguiente) pasa solo a No renovados."""
-    base = p.prorroga_hasta or p.fecha_renovacion
-    return base + dt.timedelta(days=get_settings().dias_para_decidir)
+def limite_decision(p: PaqueteCliente) -> dt.date | None:
+    """Solo aplica a quien NO ha contestado si renueva (decisión pendiente): tiene `dias_para_decidir` (2) días con la ventana
+    activa y después, a las 00:05, pasa solo a No renovados. Quien ya confirmó que renueva NO tiene este plazo."""
+    if p.renovacion_decision != "pendiente":
+        return None
+    return p.fecha_renovacion + dt.timedelta(days=get_settings().dias_para_decidir)
 
 
 def opciones_bloqueo(p: PaqueteCliente, hoy: dt.date) -> list[str]:
+    """Qué puede elegir el CM en la ventana:
+      · ya pagó                         -> renovó · no renovó
+      · no ha contestado (pendiente)    -> va a renovar · no renovó
+      · confirmó que renueva, no pagó   -> prórroga (una vez) · no renovó
+    «no_renovo» se ofrece por paquete o por cliente completo."""
     if not bloqueado(p, hoy):
         return []
     if pagado_completo(p):
         return ["renovo", "no_renovo"]
-    return ["no_renovo"] if p.prorroga_hasta is not None else ["no_renovo", "prorroga"]
+    if p.renovacion_decision == "pendiente":
+        return ["va_a_renovar", "no_renovo"]
+    return ["no_renovo"] if p.prorroga_hasta is not None else ["prorroga", "no_renovo"]
 
 
 def estado_efectivo(p: PaqueteCliente, hoy: dt.date) -> str:
@@ -107,9 +127,12 @@ def paquete_out(p: PaqueteCliente, hoy: dt.date) -> dict:
         "estado": p.estado, "estado_efectivo": estado_efectivo(p, hoy),
         "renovacion_decision": p.renovacion_decision, "renovacion_pagada": p.renovacion_pagada,
         "no_renovara": p.estado in VIGENTES and p.renovacion_decision == "no",   # marcado: se archiva al terminar el contrato
+        "confirmo_renovacion": confirmo_renovacion(p),                             # dijo que renovará (falta pagar)
+        "gracia_hasta": p.gracia_hasta, "gracia_activa": gracia_activa(p, hoy),
         "semaforo": semaforo(p, hoy),
         "bloqueado": bloqueado(p, hoy), "opciones_bloqueo": opciones_bloqueo(p, hoy),
         "limite_decision": limite_decision(p) if es_vencido(p, hoy) else None,
+        "confirmado_en": p.confirmado_en,
         "prorroga_hasta": p.prorroga_hasta, "prorroga_registrada_en": p.prorroga_registrada_en,
         "prorroga_dias_restantes": (p.prorroga_hasta - hoy).days if p.prorroga_hasta else None,
         "prorroga_activa": prorroga_activa(p, hoy), "prorroga_vencida": prorroga_vencida(p, hoy),

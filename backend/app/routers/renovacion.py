@@ -59,13 +59,36 @@ def no_renovar(paquete_id: int, datos: NoRenovarIn, db: Session = Depends(get_db
     return res
 
 
-@router.post("/paquetes/{paquete_id}/revertir-no-renovara")
+@router.post("/paquetes/{paquete_id}/revertir-decision")
 def revertir(paquete_id: int, db: Session = Depends(get_db), user: Usuario = Depends(require_writer)):
+    """Deshace «no renovará» o «confirmó que renovará» antes de que termine el contrato."""
     p = obtener_paquete(db, user, paquete_id)
-    renovacion.revertir_no_renovara(db, user, p)
+    renovacion.revertir_decision(db, user, p)
     db.commit()
     db.refresh(p)
     return ciclos.paquete_out(p, hoy_mx())
+
+
+@router.post("/paquetes/{paquete_id}/confirmar-renovacion")
+def confirmar_renovacion(paquete_id: int, db: Session = Depends(get_db), user: Usuario = Depends(require_writer)):
+    """«Confirmó / va a renovar». Si ya pagó, se renueva en el momento; si no, queda confirmada (y si ya terminó el contrato,
+    se habilitan las funciones durante la tolerancia). Es una de las salidas de la ventana: no la frena el bloqueo."""
+    p = obtener_paquete(db, user, paquete_id)
+    nuevo = renovacion.confirmar_renovacion(db, user, p)
+    db.commit()
+    db.refresh(p)
+    hoy = hoy_mx()
+    return {"paquete": ciclos.paquete_out(p, hoy),
+            "renovado_automaticamente": nuevo.id if nuevo else None}
+
+
+@router.post("/clientes/{cliente_id}/no-renovar")
+def no_renovar_cliente(cliente_id: int, db: Session = Depends(get_db), user: Usuario = Depends(require_writer)):
+    """«No renovó» por CLIENTE completo (todos sus paquetes vigentes) → No renovados."""
+    c = obtener_cliente(db, user, cliente_id)
+    n = renovacion.no_renovar_cliente(db, user, c)
+    db.commit()
+    return {"paquetes_archivados": n, "cliente_a_no_renovados": True}
 
 
 @router.get("/bloqueos")

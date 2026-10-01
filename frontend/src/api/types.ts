@@ -14,8 +14,8 @@ export interface Paquete {
   renovacion_decision: 'pendiente' | 'si' | 'no'; renovacion_pagada: boolean; semaforo: Semaforo
   prorroga_hasta: string | null; prorroga_registrada_en: string | null; prorroga_dias_restantes: number | null
   prorroga_activa: boolean; prorroga_vencida: boolean
-  bloqueado: boolean; opciones_bloqueo: ('renovo' | 'no_renovo' | 'prorroga')[]; limite_decision: string | null
-  no_renovara: boolean
+  bloqueado: boolean; opciones_bloqueo: ('renovo' | 'va_a_renovar' | 'no_renovo' | 'prorroga')[]; limite_decision: string | null
+  no_renovara: boolean; confirmo_renovacion: boolean; gracia_hasta: string | null; gracia_activa: boolean; confirmado_en: string | null
   ciclo_anterior_id: number | null; archivado_en: string | null
 }
 export interface Pago {
@@ -31,7 +31,7 @@ export interface PaqueteDetalle extends Paquete {
 
 export interface ClienteListItem {
   id: number; nombre: string; estado: 'activo' | 'no_renovado'; cm_id: number | null; cm_nombre: string | null
-  telefono: string | null; paquetes_vigentes: number; semaforo: Semaforo | null; quincenas: number[]
+  telefono: string | null; paquetes_vigentes: number; pendiente_decision: boolean; semaforo: Semaforo | null; quincenas: number[]
   proxima_renovacion: string | null
 }
 export interface ClienteFicha {

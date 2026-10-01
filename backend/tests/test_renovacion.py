@@ -130,9 +130,9 @@ def test_programado_con_otros_paquetes_el_cliente_sigue_activo(api, db, ctx, fab
 def test_se_puede_deshacer_la_marca_no_renovara_antes_del_fin(api, db, ctx, fabrica):
     a = fabrica.ciclo(ctx["c"], H + D(2))
     api.post(f"/api/paquetes/{a.id}/no-renovar", headers=ctx["h"], json={"accion": "conservar"})
-    r = api.post(f"/api/paquetes/{a.id}/revertir-no-renovara", headers=ctx["h"])
+    r = api.post(f"/api/paquetes/{a.id}/revertir-decision", headers=ctx["h"])
     assert r.status_code == 200 and r.json()["renovacion_decision"] == "pendiente" and r.json()["no_renovara"] is False
-    assert api.post(f"/api/paquetes/{a.id}/revertir-no-renovara", headers=ctx["h"]).status_code == 409
+    assert api.post(f"/api/paquetes/{a.id}/revertir-decision", headers=ctx["h"]).status_code == 409
 
 
 def test_no_renovar_ya_vencido_es_inmediato_y_si_era_el_ultimo_el_cliente_pasa_a_no_renovados(api, db, ctx, fabrica):
@@ -204,18 +204,21 @@ def test_el_contrato_termina_a_las_2359_del_dia_R_el_bloqueo_empieza_al_dia_sigu
     assert [x["id"] for x in b] == [p.id] and b[0]["cliente_nombre"] == "Cliente Ana"
 
 
-def test_opciones_de_la_ventana(api, ctx, fabrica):
+def test_opciones_de_la_ventana_segun_el_caso(api, ctx, fabrica):
     h = ctx["h"]
-    debe = fabrica.ciclo(ctx["c"], H - D(1), pagos=[(100, H)])
+    sin_respuesta = fabrica.ciclo(ctx["c"], H - D(1), pagos=[(100, H)])                            # no contesta
     pagado = fabrica.ciclo(ctx["c"], H - D(1), pagos=_pagado(1500))
-    con_prorroga = fabrica.ciclo(ctx["c"], H - D(3), prorroga=(H - D(2), H - D(1)))        # su prórroga ya venció
-    op = {p.id: api.get(f"/api/paquetes/{p.id}", headers=h).json()["opciones_bloqueo"] for p in (debe, pagado, con_prorroga)}
-    assert op[debe.id] == ["no_renovo", "prorroga"]
+    confirmo = fabrica.ciclo(ctx["c"], H - D(1), decision="si", pagos=[(100, H)])                  # dijo que renueva, no pagó
+    usada = fabrica.ciclo(ctx["c"], H - D(3), decision="si", prorroga=(H - D(2), H - D(1)))        # su prórroga ya venció
+    op = {p.id: api.get(f"/api/paquetes/{p.id}", headers=h).json()["opciones_bloqueo"]
+          for p in (sin_respuesta, pagado, confirmo, usada)}
+    assert op[sin_respuesta.id] == ["va_a_renovar", "no_renovo"]            # caso 1: primero se pregunta si va a renovar
     assert op[pagado.id] == ["renovo", "no_renovo"]
-    assert op[con_prorroga.id] == ["no_renovo"]                                            # la prórroga se usa una vez
+    assert op[confirmo.id] == ["prorroga", "no_renovo"]                     # caso 3: confirmó pero no pagó -> prórroga
+    assert op[usada.id] == ["no_renovo"]                                    # la prórroga se usa una sola vez
 
 
-def test_mientras_hay_bloqueo_todo_lo_demas_se_rechaza_pero_las_salidas_funcionan(api, db, ctx, fabrica):
+def test_mientras_hay_bloqueo_solo_se_traba_ESE_cliente_y_las_salidas_funcionan(api, db, ctx, fabrica):
     h = ctx["h"]
     bloqueado = fabrica.ciclo(ctx["c"], H - D(1), pagos=[(100, H)])
     otro = fabrica.ciclo(ctx["c"], H + D(20), paquete="Élite")
@@ -234,9 +237,12 @@ def test_mientras_hay_bloqueo_todo_lo_demas_se_rechaza_pero_las_salidas_funciona
         assert r.status_code == 409 and r.json()["detail"]["code"] == "bloqueado", (url, r.status_code, r.text)
     assert api.delete(f"/api/clientes/{ctx['c'].id}?confirmar_nombre=Cliente Ana", headers=h).status_code == 409
     assert api.get(f"/api/clientes/{ctx['c'].id}", headers=h).status_code == 200            # leer sí
-    assert api.post(f"/api/paquetes/{libre.id}/pagos", headers=h, json={"monto": 50}).status_code == 201   # otro cliente: libre
-    # las salidas siguen funcionando
-    assert api.post(f"/api/paquetes/{bloqueado.id}/prorroga", headers=h).status_code == 200
+    # el sistema NO se detiene: con otros clientes se sigue trabajando normal
+    assert api.post(f"/api/paquetes/{libre.id}/pagos", headers=h, json={"monto": 50}).status_code == 201
+    assert api.patch(f"/api/clientes/{aj.id}", headers=h, json={"nombre": "Otro nombre"}).status_code == 200
+    # la salida «va a renovar» habilita las funciones de ese cliente
+    r = api.post(f"/api/paquetes/{bloqueado.id}/confirmar-renovacion", headers=h)
+    assert r.status_code == 200 and r.json()["paquete"]["bloqueado"] is False
     assert api.post(f"/api/paquetes/{bloqueado.id}/pagos", headers=h, json={"monto": 50}).status_code == 201
 
 
@@ -244,7 +250,7 @@ def test_el_bloqueo_tambien_aplica_a_un_admin_que_opera_por_el_cm(api, ctx, fabr
     p = fabrica.ciclo(ctx["c"], H - D(1))
     adm = auth(crear_usuario("admin.demo", rol="admin"))
     assert api.post(f"/api/paquetes/{p.id}/pagos", headers=adm, json={"monto": 10}).status_code == 409
-    assert api.post(f"/api/paquetes/{p.id}/prorroga", headers=adm).status_code == 200
+    assert api.post(f"/api/paquetes/{p.id}/confirmar-renovacion", headers=adm).status_code == 200
 
 
 def test_bloqueos_solo_muestra_la_cartera_del_cm(api, ctx, fabrica, crear_usuario, auth):
@@ -258,27 +264,29 @@ def test_bloqueos_solo_muestra_la_cartera_del_cm(api, ctx, fabrica, crear_usuari
 
 # =============================================================================== la prórroga
 def test_prorroga_dura_5_dias_naturales_y_la_fecha_es_automatica(api, db, ctx, fabrica):
-    p = fabrica.ciclo(ctx["c"], H - D(1))
+    p = fabrica.ciclo(ctx["c"], H - D(1), decision="si")
     r = api.post(f"/api/paquetes/{p.id}/prorroga", headers=ctx["h"], json={"hasta": "2030-01-01"})   # el CM no elige fecha
     assert r.status_code == 200
     assert r.json()["prorroga_hasta"] == str(H + D(5)) and r.json()["prorroga_registrada_en"] == str(H)
     assert r.json()["prorroga_dias_restantes"] == 5 and r.json()["bloqueado"] is False and r.json()["prorroga_activa"] is True
 
 
-def test_prorroga_solo_con_el_contrato_terminado_con_saldo_y_una_vez(api, ctx, fabrica):
+def test_prorroga_solo_con_el_contrato_terminado_con_saldo_confirmado_y_una_vez(api, ctx, fabrica):
     h = ctx["h"]
-    antes = fabrica.ciclo(ctx["c"], H + D(2))                                  # aún no termina
-    pagado = fabrica.ciclo(ctx["c"], H - D(1), pagos=_pagado(1500))
-    ok = fabrica.ciclo(ctx["c"], H - D(1))
+    antes = fabrica.ciclo(ctx["c"], H + D(2), decision="si")                  # aún no termina
+    pagado = fabrica.ciclo(ctx["c"], H - D(1), decision="si", pagos=_pagado(1500))
+    sin_confirmar = fabrica.ciclo(ctx["c"], H - D(1))                         # no ha dicho si va a renovar
+    ok = fabrica.ciclo(ctx["c"], H - D(1), decision="si")
     assert api.post(f"/api/paquetes/{antes.id}/prorroga", headers=h).status_code == 422
     assert api.post(f"/api/paquetes/{pagado.id}/prorroga", headers=h).status_code == 422
+    assert api.post(f"/api/paquetes/{sin_confirmar.id}/prorroga", headers=h).status_code == 422
     assert api.post(f"/api/paquetes/{ok.id}/prorroga", headers=h).status_code == 200
     assert api.post(f"/api/paquetes/{ok.id}/prorroga", headers=h).status_code == 409
 
 
 def test_en_prorroga_admite_pagar_parcial_o_el_resto_y_al_completar_renueva_solo(api, db, ctx, fabrica):
     h = ctx["h"]
-    p = fabrica.ciclo(ctx["c"], H - D(1), costo=1000)
+    p = fabrica.ciclo(ctx["c"], H - D(1), costo=1000, decision="si")
     api.post(f"/api/paquetes/{p.id}/prorroga", headers=h)
     r = api.post(f"/api/paquetes/{p.id}/pagos", headers=h, json={"monto": 400})                    # parcial
     assert r.status_code == 201 and r.json()["renovado_automaticamente"] is None
@@ -304,7 +312,7 @@ def test_pagar_completo_sin_prorroga_no_renueva_solo(api, db, ctx, fabrica):
 
 def test_prorroga_vencida_sin_pago_el_cliente_pasa_solo_a_no_renovados_y_queda_el_mensaje(api, db, ctx, fabrica, hoy_fijo):
     from app.jobs import tareas
-    p = fabrica.ciclo(ctx["c"], H - D(1), costo=1000, pagos=[(300, H)])
+    p = fabrica.ciclo(ctx["c"], H - D(1), costo=1000, decision="si", pagos=[(300, H)])
     api.post(f"/api/paquetes/{p.id}/prorroga", headers=ctx["h"])                  # hasta H+5
     hoy_fijo(H + D(5))
     assert tareas.avisos_prorroga(db, H + D(5))["prorrogas_vencidas"] == 0        # el día 5 aún es válida
@@ -323,7 +331,7 @@ def test_prorroga_vencida_sin_pago_el_cliente_pasa_solo_a_no_renovados_y_queda_e
 
 def test_prorroga_pagada_a_tiempo_se_renueva_y_no_se_archiva(api, db, ctx, fabrica, hoy_fijo):
     from app.jobs import tareas
-    p = fabrica.ciclo(ctx["c"], H - D(1), costo=1000)
+    p = fabrica.ciclo(ctx["c"], H - D(1), costo=1000, decision="si")
     api.post(f"/api/paquetes/{p.id}/prorroga", headers=ctx["h"])
     api.post(f"/api/paquetes/{p.id}/pagos", headers=ctx["h"], json={"monto": 1000})
     hoy_fijo(H + D(6))
@@ -334,7 +342,7 @@ def test_prorroga_pagada_a_tiempo_se_renueva_y_no_se_archiva(api, db, ctx, fabri
 
 def test_aviso_de_prorroga_3_dias_antes_de_vencer(api, db, ctx, fabrica, hoy_fijo):
     from app.jobs import tareas
-    p = fabrica.ciclo(ctx["c"], H - D(1), costo=1000)
+    p = fabrica.ciclo(ctx["c"], H - D(1), costo=1000, decision="si")
     api.post(f"/api/paquetes/{p.id}/prorroga", headers=ctx["h"])                  # vence H+5
     assert tareas.avisos_prorroga(db, H + D(1))["avisos_prorroga"] == 0           # faltan 4
     assert tareas.avisos_prorroga(db, H + D(2))["avisos_prorroga"] == 1           # faltan 3
@@ -375,7 +383,7 @@ def test_sin_decision_tras_2_dias_de_bloqueo_pasa_solo_a_no_renovados(api, db, c
 
 def test_con_prorroga_corriendo_no_se_archiva_por_falta_de_decision(api, db, ctx, fabrica, hoy_fijo):
     from app.jobs import tareas
-    p = fabrica.ciclo(ctx["c"], H - D(1), costo=1000)
+    p = fabrica.ciclo(ctx["c"], H - D(1), costo=1000, decision="si")
     hoy_fijo(H)
     api.post(f"/api/paquetes/{p.id}/prorroga", headers=ctx["h"])                  # hasta H+5 (R+1 era ayer)
     hoy_fijo(H + D(4))
@@ -406,11 +414,11 @@ def test_jobs_son_idempotentes_no_duplican_notificaciones(db, ctx, fabrica):
     from app.jobs import tareas
     fabrica.ciclo(ctx["c"], H + D(2))
     fabrica.ciclo(ctx["c"], H - D(1))
-    fabrica.ciclo(ctx["c"], H - D(30), costo=1000, prorroga=(H - D(3), H + D(2)))
+    fabrica.ciclo(ctx["c"], H - D(30), costo=1000, decision="si", prorroga=(H - D(3), H + D(2)))
     for _ in range(3):
         tareas.avisos_renovacion(db, H)
         tareas.avisos_prorroga(db, H)
-    assert db.scalar(select(func.count()).select_from(Notificacion)) == 4   # aviso R-4, 2 vencidos y aviso de prórroga
+    assert db.scalar(select(func.count()).select_from(Notificacion)) == 3   # aviso R-4, un vencido y aviso de prórroga (con prórroga corriendo no hay aviso de vencido)
 
 
 def test_notificaciones_van_al_cm_y_si_esta_por_reasignar_a_los_admin(db, ctx, fabrica, crear_usuario):
@@ -577,3 +585,140 @@ def test_tablero_cuatro_columnas(api, db, ctx, fabrica, crear_usuario, auth):
     solo = api.get(f"/api/renovaciones/tablero?anio=2026&mes=10&quincena=1&cm_id={ctx['ana'].id}", headers=adm).json()
     assert sum(len(v) for v in solo["columnas"].values()) == 4
     assert "Ajeno" not in api.get(f"/api/renovaciones/tablero?anio=2026&mes=10&quincena=1&cm_id={otro.cm_id}", headers=ctx["h"]).text
+
+
+# ============================================================== LOS TRES CASOS DE «NO ME HAN CONTESTADO»
+def test_caso1_no_contesta_pregunta_si_va_a_renovar_y_tiene_2_dias_o_pasa_a_no_renovados(api, db, ctx, fabrica, hoy_fijo):
+    from app.jobs import tareas
+    p = fabrica.ciclo(ctx["c"], H, pagos=[(100, H)])
+    hoy_fijo(H + D(1))
+    tareas.avisos_renovacion(db, H + D(1))
+    assert "va a renovar o no" in db.scalars(select(Notificacion).where(Notificacion.tipo == "paquete_vencido")).one().mensaje
+    tareas.avisos_renovacion(db, H + D(2))                                         # 2 días de tolerancia: sigue abierto
+    db.refresh(p)
+    assert p.estado == "vencido"
+    tareas.avisos_renovacion(db, H + D(3))                                         # pasaron los 2 días sin respuesta
+    db.refresh(p), db.refresh(ctx["c"])
+    assert p.estado == "archivado" and ctx["c"].estado == "no_renovado"
+
+
+def test_caso1_si_contesta_que_renovara_ese_dia_es_el_inicio_y_a_las_2359_vuelve_la_ventana_sin_tolerancia(api, db, ctx, fabrica, hoy_fijo):
+    from app.jobs import tareas
+    h = ctx["h"]
+    p = fabrica.ciclo(ctx["c"], H, costo=1000)
+    hoy_fijo(H + D(1))                                                             # no contestó: ventana «¿va a renovar?»
+    assert api.get(f"/api/paquetes/{p.id}", headers=h).json()["opciones_bloqueo"] == ["va_a_renovar", "no_renovo"]
+    r = api.post(f"/api/paquetes/{p.id}/confirmar-renovacion", headers=h).json()
+    assert r["renovado_automaticamente"] is None and r["paquete"]["bloqueado"] is False and r["paquete"]["confirmo_renovacion"]
+    assert r["paquete"]["gracia_hasta"] == str(H + D(1)) and r["paquete"]["confirmado_en"] == str(H + D(1))   # solo hoy
+    assert r["paquete"]["limite_decision"] is None                                 # el plazo de 2 días ya no aplica
+    assert api.get("/api/bloqueos", headers=h).json() == []                        # funciones habilitadas el resto del día
+    assert api.post(f"/api/paquetes/{p.id}/pagos", headers=h, json={"monto": 300}).status_code == 201
+    hoy_fijo(H + D(2))                                                             # 23:59 pasó: sin tolerancia de pago
+    d = api.get(f"/api/paquetes/{p.id}", headers=h).json()
+    assert d["bloqueado"] is True and d["opciones_bloqueo"] == ["prorroga", "no_renovo"]
+    tareas.avisos_renovacion(db, H + D(2))
+    assert "solicita prórroga o si no renovó" in db.scalars(select(Notificacion).where(Notificacion.tipo == "paquete_vencido")).one().mensaje
+    assert api.post(f"/api/paquetes/{p.id}/prorroga", headers=h).status_code == 200
+    r = api.post(f"/api/paquetes/{p.id}/pagos", headers=h, json={"monto": 700}).json()       # paga el resto dentro de la prórroga
+    n = api.get(f"/api/paquetes/{r['renovado_automaticamente']}", headers=h).json()
+    assert (n["fecha_inicio"], n["fecha_renovacion"]) == (str(H + D(1)), str(H + D(31)))     # inicio = día que CONFIRMÓ
+
+
+def test_quien_confirmo_que_renueva_no_tiene_plazo_de_2_dias_no_se_archiva_por_inactividad(api, db, ctx, fabrica, hoy_fijo):
+    from app.jobs import tareas
+    p = fabrica.ciclo(ctx["c"], H, costo=1000)
+    hoy_fijo(H + D(1))
+    api.post(f"/api/paquetes/{p.id}/confirmar-renovacion", headers=ctx["h"])
+    for dia in (2, 4, 10, 30):
+        assert tareas.avisos_renovacion(db, H + D(dia))["pasaron_a_no_renovados"] == 0
+    db.refresh(p)
+    assert p.estado == "vencido"                                                   # sigue esperando la decisión de prórroga / no renovó
+
+
+def test_caso1_si_ya_pago_y_contesta_que_renovo_se_renueva_en_el_momento(api, db, ctx, fabrica, hoy_fijo):
+    p = fabrica.ciclo(ctx["c"], H, costo=1000, pagos=[(1000, H)])
+    hoy_fijo(H + D(1))
+    r = api.post(f"/api/paquetes/{p.id}/confirmar-renovacion", headers=ctx["h"]).json()
+    assert r["renovado_automaticamente"]
+    n = api.get(f"/api/paquetes/{r['renovado_automaticamente']}", headers=ctx["h"]).json()
+    assert (n["fecha_inicio"], n["fecha_renovacion"]) == (str(H + D(1)), str(H + D(31)))      # empieza el día que confirmó
+
+
+def test_caso2_dijo_que_no_renovara_se_archiva_al_terminar_el_contrato_sin_ventana(api, db, ctx, fabrica, hoy_fijo):
+    from app.jobs import tareas
+    p = fabrica.ciclo(ctx["c"], H + D(2))
+    api.post(f"/api/paquetes/{p.id}/no-renovar", headers=ctx["h"], json={"accion": "conservar"})
+    hoy_fijo(H + D(3))
+    assert api.get("/api/bloqueos", headers=ctx["h"]).json() == []               # no hay ventana: ya lo decidió
+    tareas.avisos_renovacion(db, H + D(3))
+    db.refresh(p), db.refresh(ctx["c"])
+    assert p.estado == "archivado" and ctx["c"].estado == "no_renovado"
+
+
+def test_caso3_confirmo_que_renovara_sin_pagar_se_bloquea_al_terminar_y_pregunta_por_la_prorroga(api, db, ctx, fabrica, hoy_fijo):
+    h = ctx["h"]
+    p = fabrica.ciclo(ctx["c"], H + D(2), costo=1000)
+    r = api.post(f"/api/paquetes/{p.id}/confirmar-renovacion", headers=h).json()          # antes de R
+    assert r["renovado_automaticamente"] is None
+    assert r["paquete"]["confirmo_renovacion"] is True and r["paquete"]["semaforo"] == "amarillo"
+    assert r["paquete"]["gracia_hasta"] is None and r["paquete"]["bloqueado"] is False
+    hoy_fijo(H + D(2))
+    assert api.get(f"/api/paquetes/{p.id}", headers=h).json()["bloqueado"] is False       # el día R aún vigente
+    hoy_fijo(H + D(3))                                                                    # R 23:59 pasó, sin gracia
+    d = api.get(f"/api/paquetes/{p.id}", headers=h).json()
+    assert d["bloqueado"] is True and d["opciones_bloqueo"] == ["prorroga", "no_renovo"]
+    assert api.post(f"/api/paquetes/{p.id}/prorroga", headers=h).status_code == 200
+
+
+def test_caso3_si_paga_completo_despues_de_confirmar_se_renueva_solo(api, ctx, fabrica):
+    h = ctx["h"]
+    p = fabrica.ciclo(ctx["c"], H + D(5), costo=1000)
+    api.post(f"/api/paquetes/{p.id}/confirmar-renovacion", headers=h)
+    assert api.post(f"/api/paquetes/{p.id}/pagos", headers=h, json={"monto": 400}).json()["renovado_automaticamente"] is None
+    r = api.post(f"/api/paquetes/{p.id}/pagos", headers=h, json={"monto": 600}).json()
+    assert r["renovado_automaticamente"] and r["paquete"]["estado"] == "renovado"
+
+
+def test_se_puede_deshacer_la_confirmacion_antes_del_fin_y_no_con_no_renovara_pendiente(api, ctx, fabrica):
+    h = ctx["h"]
+    p = fabrica.ciclo(ctx["c"], H + D(5), costo=1000)
+    api.post(f"/api/paquetes/{p.id}/confirmar-renovacion", headers=h)
+    r = api.post(f"/api/paquetes/{p.id}/revertir-decision", headers=h)
+    assert r.status_code == 200 and r.json()["renovacion_decision"] == "pendiente" and r.json()["confirmo_renovacion"] is False
+    api.post(f"/api/paquetes/{p.id}/no-renovar", headers=h, json={"accion": "conservar"})
+    assert api.post(f"/api/paquetes/{p.id}/confirmar-renovacion", headers=h).status_code == 409   # primero deshacer «no renovará»
+
+
+def test_no_renovo_por_cliente_archiva_todos_sus_paquetes_y_lo_manda_a_no_renovados(api, db, ctx, fabrica, crear_usuario, auth):
+    h = ctx["h"]
+    a = fabrica.ciclo(ctx["c"], H - D(1))                                          # bloqueado
+    b = fabrica.ciclo(ctx["c"], H + D(20), paquete="Élite")                        # aún vigente
+    renovado = fabrica.ciclo(ctx["c"], H - D(10), estado="renovado", decision="si")
+    r = api.post(f"/api/clientes/{ctx['c'].id}/no-renovar", headers=h)
+    assert r.json() == {"paquetes_archivados": 2, "cliente_a_no_renovados": True}
+    db.refresh(a), db.refresh(b), db.refresh(renovado), db.refresh(ctx["c"])
+    assert (a.estado, b.estado, renovado.estado, ctx["c"].estado) == ("archivado", "archivado", "renovado", "no_renovado")
+    assert db.scalars(select(ArchivoNoRenovado)).one().reingresado_en is None
+    assert api.post(f"/api/clientes/{ctx['c'].id}/no-renovar", headers=h).status_code == 409      # ya no tiene paquetes vigentes
+    ajeno = fabrica.cliente(crear_usuario("beto.luna"), "De Beto")
+    fabrica.ciclo(ajeno, H + D(3))
+    assert api.post(f"/api/clientes/{ajeno.id}/no-renovar", headers=h).status_code == 404         # aislamiento por cm_id
+
+
+def test_la_lista_de_clientes_marca_cuales_tienen_decision_pendiente(api, ctx, fabrica):
+    fabrica.ciclo(ctx["c"], H - D(1))
+    otro = fabrica.cliente(ctx["ana"], "Sin pendientes")
+    fabrica.ciclo(otro, H + D(20))
+    filas = {c["nombre"]: c["pendiente_decision"] for c in api.get("/api/clientes", headers=ctx["h"]).json()}
+    assert filas == {"Cliente Ana": True, "Sin pendientes": False}
+
+
+def test_caso3_el_dia_de_la_confirmacion_es_el_inicio_del_nuevo_contrato_aunque_pague_despues(api, ctx, fabrica, hoy_fijo):
+    h = ctx["h"]
+    p = fabrica.ciclo(ctx["c"], H + D(10), costo=1000)
+    api.post(f"/api/paquetes/{p.id}/confirmar-renovacion", headers=h)              # confirma hoy (H)
+    hoy_fijo(H + D(4))
+    r = api.post(f"/api/paquetes/{p.id}/pagos", headers=h, json={"monto": 1000}).json()
+    n = api.get(f"/api/paquetes/{r['renovado_automaticamente']}", headers=h).json()
+    assert (n["fecha_inicio"], n["fecha_renovacion"]) == (str(H), str(H + D(30)))
