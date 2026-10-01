@@ -14,7 +14,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY backend/ .
 COPY --from=frontend /backend/app/static ./app/static
-RUN chmod +x entrypoint.sh && useradd --create-home --uid 10001 app && chown -R app /app
+RUN sed -i 's/\r$//' entrypoint.sh && chmod +x entrypoint.sh && useradd --create-home --uid 10001 app && chown -R app /app
 USER app
 
 EXPOSE 8000
