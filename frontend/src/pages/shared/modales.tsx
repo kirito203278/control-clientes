@@ -118,6 +118,7 @@ export function RenovarModal({ p, onClose, onHecho }: { p: Paquete; onClose: () 
       <div className="callout callout-info">
         Se cierra este ciclo (conserva sus pagos y lo que se deba) y se abre uno nuevo con <strong>pagado en $0</strong>.
         El ciclo anterior queda en el historial de renovaciones.
+        {cambiar && ' Al cambiar de paquete, el conteo de renovaciones del paquete se reinicia en 0 y se usan los datos nuevos (paquete, tipo y costo).'}
       </div>
       <div className="segmented light full" style={{ marginBottom: 14 }}>
         <button className={!cambiar ? 'active' : ''} onClick={() => setCambiar(false)}>Mantener el mismo paquete</button>

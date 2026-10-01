@@ -76,7 +76,7 @@ def detalle(paquete_id: int, db: Session = Depends(get_db), user: Usuario = Depe
         sig = db.scalars(paquetes_q(user).where(PaqueteCliente.ciclo_anterior_id == sig.id)).first()
     renov = db.scalars(select(Renovacion).where(Renovacion.ciclo_anterior_id.in_([x.id for x in cadena]))
                        .order_by(Renovacion.fecha.desc())).all()
-    return {**ciclos.paquete_out(p, hoy),
+    return {**ciclos.paquete_out(p, hoy), "veces_renovado": ciclos.veces_renovado(db, p),
             "pagos": [pago_out(g, nombres) for g in sorted(p.pagos, key=lambda g: (g.fecha, g.id), reverse=True)],
             "ciclos": [ciclos.paquete_out(x, hoy) for x in cadena],
             "renovaciones": [{"id": r.id, "fecha": r.fecha, "ciclo_anterior_id": r.ciclo_anterior_id,

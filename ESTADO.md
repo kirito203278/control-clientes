@@ -10,7 +10,7 @@ Referencia de solo lectura: `~/Documentos/referencia/sistema-campanas-master` (n
 - [x] Fase 4 — Renovación, No renovados, notificaciones, jobs (backend + frontend)
 - [x] Fase 5 — Ingresos (pantalla CM y admin), recordatorios WhatsApp (SIN importador: la cartera arranca de cero)
 - [x] Fase 6 — Reportes PDF/Excel + pruebas (incl. recálculo de fórmulas con LibreOffice) y vista previa en pantalla
-- [ ] Fase 7 — Producción (Render + Neon, cron-job.org, UptimeRobot)
+- [x] Fase 7 — Producción: Dockerfile de dos etapas, secretos validados, CLI del primer admin, render.yaml, docs/DESPLIEGUE.md
 
 ## Decisiones (propuestas, pendientes de confirmar salvo indicación)
 - Cada fila de `paquetes_cliente` = un CICLO; renovar crea fila nueva (`ciclo_anterior_id`). Pagos cuelgan del ciclo.
@@ -52,3 +52,10 @@ CICLO_DIAS=30, TOLERANCIA_DIAS=3, PRORROGA_MAX_DIAS=15, AVISO_DIAS_ANTES_RENOVAC
 - Tasa de renovación = renovados / (ciclos que llegaron a su fecha en el periodo, incluidos archivados/eliminados).
 - Reportes: CM obtiene el mismo generador filtrado por su cartera (el `cm_id` de la petición se ignora para un CM). Admin de solo lectura puede descargar.
 - Excel: hoja por sección; totales y derivados (restante, %, días, SUMIFS por CM) son fórmulas reales, verificadas recalculando con LibreOffice.
+
+## Regla agregada al final
+- Renovar con OTRO paquete reinicia el contador «renovaciones con este paquete» (derivado de la cadena de ciclos, `ciclos.veces_renovado`) y aplica los datos nuevos (paquete, tipo, costo); renovar con el mismo lo incrementa. El historial de ciclos se conserva.
+
+## Pendiente del usuario
+- Probar con Docker real (aquí no había Docker; todo se probó con Postgres 18 embebido y uvicorn).
+- Desplegar siguiendo docs/DESPLIEGUE.md. docs/FASE0_endpoints.md es el diseño inicial; la API final difiere (prefijos /api/clientes, /api/paquetes...).

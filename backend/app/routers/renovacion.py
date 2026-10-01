@@ -48,7 +48,8 @@ def renovar(paquete_id: int, datos: RenovarIn, db: Session = Depends(get_db), us
     db.commit()
     db.refresh(p), db.refresh(nuevo)
     hoy = hoy_mx()
-    return {"anterior": ciclos.paquete_out(p, hoy), "nuevo": ciclos.paquete_out(nuevo, hoy)}
+    return {"anterior": ciclos.paquete_out(p, hoy),
+            "nuevo": {**ciclos.paquete_out(nuevo, hoy), "veces_renovado": ciclos.veces_renovado(db, nuevo)}}
 
 
 @router.post("/paquetes/{paquete_id}/no-renovar")

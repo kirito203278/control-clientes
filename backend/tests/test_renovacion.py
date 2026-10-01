@@ -384,3 +384,20 @@ def test_tablero_cuatro_columnas(api, db, ctx, fabrica, crear_usuario, auth):
     assert sum(len(v) for v in solo["columnas"].values()) == 4
     h = ctx["h"]
     assert "Ajeno" not in api.get(f"/api/renovaciones/tablero?anio=2026&mes=10&quincena=1&cm_id={otro.cm_id}", headers=h).text
+
+
+def test_cambiar_de_paquete_reinicia_el_contador_de_renovaciones(api, db, ctx, fabrica):
+    p = fabrica.ciclo(ctx["c"], H + D(2), paquete="Básico")
+    h = ctx["h"]
+    n1 = api.post(f"/api/paquetes/{p.id}/renovar", headers=h, json={}).json()["nuevo"]
+    n2 = api.post(f"/api/paquetes/{n1['id']}/renovar", headers=h, json={}).json()["nuevo"]
+    assert (n1["veces_renovado"], n2["veces_renovado"]) == (1, 2)
+    # renueva con OTRO paquete: cuenta en 0 y cambian nombre, tipo y costo
+    n3 = api.post(f"/api/paquetes/{n2['id']}/renovar", headers=h,
+                  json={"paquete_id": 3, "tipo_id": 2, "costo": 4500}).json()["nuevo"]
+    assert (n3["veces_renovado"], n3["paquete"], n3["tipo"], float(n3["costo"])) == (0, "Élite", "Dinamita", 4500)
+    n4 = api.post(f"/api/paquetes/{n3['id']}/renovar", headers=h, json={}).json()["nuevo"]
+    assert n4["veces_renovado"] == 1                                   # empieza a contar de nuevo con el paquete nuevo
+    # el historial de ciclos anteriores sigue ahí
+    d = api.get(f"/api/paquetes/{n4['id']}", headers=h).json()
+    assert d["veces_renovado"] == 1 and len(d["ciclos"]) == 5

@@ -183,6 +183,7 @@ function Paquetes({ ficha, paqueteId, setPaqueteId, puedeEscribir, recargar, sin
             <div><div className="k">Pagado</div><div className="v" style={{ color: 'var(--good)' }}>{dinero(det.pagado)}</div></div>
             <div><div className="k">Restante</div><div className="v" style={{ color: det.restante > 0 ? 'var(--warn)' : 'var(--good)' }}>{dinero(det.restante)}</div></div>
             <div><div className="k">Fecha de renovación</div><div className="v">{fecha(det.fecha_renovacion)}</div></div>
+            <div><div className="k">Renovaciones con este paquete</div><div className="v">{det.veces_renovado}</div></div>
             <div><div className="k">Estado</div><div className="v"><span className={`badge ${BADGE_ESTADO[det.estado_efectivo]}`}>{ESTADO_LABEL[det.estado_efectivo]}</span></div></div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 6 }}>

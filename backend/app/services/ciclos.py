@@ -76,3 +76,15 @@ def paquete_out(p: PaqueteCliente, hoy: dt.date) -> dict:
         "prorroga_vencida": prorroga_vencida(p, hoy), "requiere_prorroga": requiere_prorroga(p, hoy),
         "ciclo_anterior_id": p.ciclo_anterior_id, "archivado_en": p.archivado_en,
     }
+
+
+def veces_renovado(db, p: PaqueteCliente) -> int:
+    """Renovaciones consecutivas con ESTE mismo paquete. Al renovar con otro paquete la cuenta se reinicia en 0
+    (el historial de ciclos se conserva; solo cambia el contador)."""
+    n, actual = 0, p
+    while actual.ciclo_anterior_id is not None:
+        anterior = db.get(PaqueteCliente, actual.ciclo_anterior_id)
+        if anterior is None or anterior.paquete_id != p.paquete_id:
+            break
+        n, actual = n + 1, anterior
+    return n

@@ -21,7 +21,7 @@ export interface Pago {
   registrado_por_nombre: string | null; creado_en: string
 }
 export interface PaqueteDetalle extends Paquete {
-  pagos: Pago[]; ciclos: Paquete[]
+  veces_renovado: number; pagos: Pago[]; ciclos: Paquete[]
   renovaciones: { id: number; fecha: string; costo_anterior: number; costo_nuevo: number
     paquete_anterior_id: number; paquete_nuevo_id: number; ciclo_anterior_id: number; ciclo_nuevo_id: number }[]
 }
