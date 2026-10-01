@@ -21,6 +21,8 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
     tz: str = "America/Mexico_City"
     agencia_nombre: str = "INNquietus"
+    scheduler_enabled: bool = True
+    static_dir: str = "app/static"
 
     # Reglas de negocio parametrizables (ver ESTADO.md)
     ciclo_dias: int = 30                  # duración de un ciclo

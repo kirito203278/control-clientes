@@ -5,7 +5,7 @@ Referencia de solo lectura: `~/Documentos/referencia/sistema-campanas-master` (n
 ## Fases
 - [x] Fase 0 — Diseño: `docs/FASE0_esquema.sql`, `docs/FASE0_endpoints.md`. **Cerrada**: todas las preguntas respondidas.
 - [x] Fase 1 — BD, migraciones, seed, Docker, `.env` (ver COMO_EJECUTAR.md). Pendiente del usuario: probar con Docker real (aquí no había Docker; se probó con Postgres 18 embebido).
-- [ ] Fase 2 — Auth, roles, equipo, reasignación/baja
+- [x] Fase 2 — Auth, roles, equipo, baja de CM con migración (la reasignación de clientes sueltos va junto al router de clientes, Fase 3)
 - [ ] Fase 3 — Panel CM
 - [ ] Fase 4 — Renovación, No renovados, notificaciones, jobs
 - [ ] Fase 5 — Ingresos, recordatorios WhatsApp (SIN importador: la cartera arranca de cero)

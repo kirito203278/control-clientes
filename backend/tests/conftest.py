@@ -74,3 +74,49 @@ def db(engine):
     session.close()
     trans.rollback()
     conn.close()
+
+
+# ----------------------------------------------------------------- API / fábricas
+from fastapi.testclient import TestClient  # noqa: E402
+
+from app.security import passwords, rate_limit  # noqa: E402
+
+passwords.BCRYPT_ROUNDS = 4
+
+
+@pytest.fixture(autouse=True)
+def _limpiar_rate_limit():
+    rate_limit.reiniciar_todo()
+
+
+@pytest.fixture
+def api(db):
+    from app.database import get_db
+    from app.main import app
+    app.dependency_overrides[get_db] = lambda: db
+    yield TestClient(app)
+    app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def crear_usuario(db):
+    from app.models import Usuario
+
+    def _crear(username, rol="cm", solo_lectura=False, activo=True, password="Clave-de-prueba-1"):
+        u = Usuario(nombre=username.split(".")[0].title(), username=username, rol=rol, solo_lectura=solo_lectura,
+                    activo=activo, password_hash=passwords.hash_password(password))
+        db.add(u)
+        db.flush()
+        u._password = password
+        return u
+    return _crear
+
+
+@pytest.fixture
+def auth(api):
+    """auth(usuario) -> headers con un JWT válido."""
+    def _auth(u):
+        r = api.post("/api/auth/login", json={"username": u.username, "password": u._password})
+        assert r.status_code == 200, r.text
+        return {"Authorization": f"Bearer {r.json()['access_token']}"}
+    return _auth

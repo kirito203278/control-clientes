@@ -8,10 +8,11 @@ _LOWER = "abcdefghijkmnopqrstuvwxyz"
 _DIGITS = "23456789"
 _SYMBOLS = "!@#$%&*?-_"
 LONGITUD_CONTRASENA = 18
+BCRYPT_ROUNDS = 12  # las pruebas lo bajan para ir rápido
 
 
 def hash_password(password: str) -> str:
-    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt(rounds=BCRYPT_ROUNDS)).decode("utf-8")
 
 
 def verify_password(password: str, password_hash: str) -> bool:
