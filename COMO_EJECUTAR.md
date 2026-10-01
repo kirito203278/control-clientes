@@ -1,5 +1,7 @@
 # Cómo ejecutar
 
+La forma más rápida de probarlo es el modo demo del [README](README.md) (un solo comando). Esto es para desarrollo.
+
 ## Todo en uno con Docker (recomendado para probar)
 Requisitos: Docker + Docker Compose.
 
