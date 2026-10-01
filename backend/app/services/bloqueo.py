@@ -1,7 +1,3 @@
-"""Bloqueo de un cliente/paquete cuyo contrato terminó sin decisión (el servidor lo hace valer; la interfaz solo lo muestra).
-
-Mientras haya un paquete bloqueado, toda ESCRITURA sobre ese cliente se rechaza (409 code=bloqueado) salvo las tres
-salidas: renovar, no renovar y solicitar prórroga. Esas rutas no llaman a `exigir_libre`."""
 from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload

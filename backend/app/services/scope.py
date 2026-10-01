@@ -1,5 +1,3 @@
-"""Capa de datos con aislamiento por CM: todo acceso a clientes/paquetes/pagos pasa por aquí.
-Un CM solo ve cm_id == su id; un admin ve todo."""
 from fastapi import HTTPException, status
 from sqlalchemy import Select, select
 from sqlalchemy.orm import Session, selectinload
@@ -40,5 +38,5 @@ def obtener_pago(db: Session, user: Usuario, pago_id: int) -> Pago:
     pago = db.get(Pago, pago_id)
     if pago is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Pago no encontrado")
-    obtener_paquete(db, user, pago.paquete_id)  # 404 si el paquete no es visible para el usuario
+    obtener_paquete(db, user, pago.paquete_id)
     return pago

@@ -1,4 +1,3 @@
-"""Identidad de marca INNquietus para los reportes (paleta tomada del logo de la agencia)."""
 from pathlib import Path
 
 from reportlab.lib.colors import HexColor
@@ -21,7 +20,6 @@ BAD_BG = HexColor("#fce8e6")
 GOOD_BG = HexColor("#e7f8ee")
 WARN_BG = HexColor("#ffe3d1")
 
-# Mismos tonos que el semáforo del frontend
 SEMAFORO = {"verde": GOOD, "amarillo": HexColor("#e6b800"), "rojo": BAD, "gris": INK_LIGHT}
 SEMAFORO_TEXTO = {"verde": "Verde · pagada", "amarillo": "Amarillo · sin pago", "rojo": "Rojo · vencido",
                   "gris": "Gris · pendiente"}

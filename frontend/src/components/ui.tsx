@@ -3,7 +3,7 @@ import type { Semaforo as SemaforoT } from '../api/types'
 import { SEMAFORO_LABEL } from '../util'
 
 export function Modal({ title, onClose, children, width }: { title: string; onClose?: () => void; children: ReactNode; width?: number }) {
-  // Los modales NO se cierran al hacer clic afuera (decisión heredada del proyecto anterior): solo con sus botones.
+
   return (
     <div className="modal-backdrop">
       <div className="modal" style={width ? { maxWidth: width } : undefined} role="dialog" aria-modal="true" aria-label={title}>
@@ -31,7 +31,6 @@ export function Progreso({ pct }: { pct: number }) {
   return <div className="progress" role="progressbar" aria-valuenow={Math.round(pct)} aria-valuemin={0} aria-valuemax={100}><div style={{ width: `${Math.min(100, pct)}%` }} /></div>
 }
 
-/** Campo de contraseña con botón «Ver»: permite revisar lo escrito antes de enviarlo. */
 export function CampoPassword({ value, onChange, placeholder, autoFocus, disabled, id, autoComplete = 'new-password' }: {
   value: string; onChange: (v: string) => void; placeholder?: string; autoFocus?: boolean; disabled?: boolean; id?: string; autoComplete?: string
 }) {
@@ -46,7 +45,6 @@ export function CampoPassword({ value, onChange, placeholder, autoFocus, disable
   )
 }
 
-/** Sugerencia aleatoria de 14 caracteres (sin ambiguos) para quien no quiera inventar una. */
 export function sugerirPassword(): string {
   const set = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789-_!'
   const bytes = crypto.getRandomValues(new Uint32Array(14))

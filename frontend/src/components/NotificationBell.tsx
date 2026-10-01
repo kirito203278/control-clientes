@@ -10,13 +10,13 @@ export default function NotificationBell({ onAbrirPaquete }: { onAbrirPaquete?: 
   const [data, setData] = useState<NotificacionesResp | null>(null)
   const [open, setOpen] = useState(false)
   const [recordatorio, setRecordatorio] = useState<Recordatorio | null>(null)
-  const vistas = useRef<Set<number> | null>(null)       // primera carga: no spamear con lo que ya estaba
+  const vistas = useRef<Set<number> | null>(null)
   const contenedor = useRef<HTMLDivElement>(null)
 
   const cargar = useCallback(async () => {
     const resp = await api.get<NotificacionesResp>('/notificaciones')
     setData(resp)
-    // Notificaciones nativas del navegador solo para lo NUEVO no leído
+
     if (vistas.current === null) vistas.current = new Set(resp.items.map((n) => n.id))
     else for (const n of resp.items) {
       if (!n.leida && !vistas.current.has(n.id)) {

@@ -15,19 +15,18 @@ D = dt.timedelta
 
 @pytest.fixture
 def datos(db, crear_usuario, fabrica, hoy_fijo):
-    """Escenario fijo. Hoy = 20/10/2026 (2da quincena en curso)."""
     hoy_fijo(dt.date(2026, 10, 20))
     ana, beto = crear_usuario("ana.ruiz"), crear_usuario("beto.luna")
     a, b = fabrica.cliente(ana, "Cliente A"), fabrica.cliente(beto, "Cliente B")
     c = fabrica.cliente(None, "Cliente Huérfano")
-    oct_ = lambda d: dt.date(2026, 10, d)  # noqa: E731
+    oct_ = lambda d: dt.date(2026, 10, d)
     e = {}
     e["a1"] = fabrica.ciclo(a, oct_(5), costo=1000, estado="renovado", decision="si", pagos=[(1000, oct_(2))])
     e["a2"] = fabrica.ciclo(a, oct_(18), costo=2000, estado="vencido", pagos=[(500, oct_(10))],
-                            prorroga=(oct_(15), oct_(19)))                      # prórroga ya vencida
+                            prorroga=(oct_(15), oct_(19)))
     e["a3"] = fabrica.ciclo(a, oct_(25), costo=3000)
     e["a4"] = fabrica.ciclo(a, dt.date(2026, 9, 20), costo=500, estado="vencido", pagos=[(100, dt.date(2026, 9, 1))],
-                            prorroga=(oct_(18), oct_(22)))          # de septiembre, prórroga activa
+                            prorroga=(oct_(18), oct_(22)))
     e["a5"] = fabrica.ciclo(a, oct_(10), costo=700, estado="archivado", decision="no")
     e["b1"] = fabrica.ciclo(b, oct_(30), costo=1500, pagos=[(1500, oct_(19))])
     e["c1"] = fabrica.ciclo(c, oct_(12), costo=800, por=ana)
@@ -42,7 +41,7 @@ def test_proyeccion_cobrado_y_pendiente_del_periodo_en_curso(api, auth, crear_us
     assert r["periodo"]["cerrado"] is False and r["periodo"]["estado_texto"] == "Periodo parcial, corte al 20/10/2026"
     assert r["total_general"]["proyeccion"] == 8300
     por = {c["cm"]: c for c in r["por_cm"]}
-    assert (por["Ana"]["proyeccion"], por["Ana"]["cobrado"]) == (6000, 1500)   # a5 archivado y a4 (sept) fuera
+    assert (por["Ana"]["proyeccion"], por["Ana"]["cobrado"]) == (6000, 1500)
     assert (por["Beto"]["proyeccion"], por["Beto"]["cobrado"]) == (1500, 1500) and por["Beto"]["pct_cobrado"] == 100
     assert por["Por reasignar"]["proyeccion"] == 800
 
@@ -64,7 +63,6 @@ def test_periodo_cerrado_dice_cerrado_y_septiembre_solo_trae_sus_paquetes(api, a
 
 
 def test_cobrado_solo_cuenta_hasta_la_fecha_de_corte(api, db, auth, crear_usuario, datos):
-    """Un pago fechado después del corte (no debería existir, pero si existe) no entra a lo cobrado."""
     p = datos["e"]["a3"]
     db.add(Pago(paquete_id=p.id, monto=Decimal(999), fecha=dt.date(2026, 10, 21), registrado_por=datos["ana"].id))
     db.flush()
@@ -78,7 +76,7 @@ def test_ingresos_por_cliente_suma_sus_paquetes(api, auth, datos):
     cli = {c["cliente"]: c for c in r["clientes"]}
     assert list(cli) == ["Cliente A"] and cli["Cliente A"]["paquetes"] == 3
     assert (cli["Cliente A"]["proyeccion"], cli["Cliente A"]["actual"]) == (6000, 1500)
-    assert "por_cm" not in r                                      # el CM no ve el desglose por CM
+    assert "por_cm" not in r
 
 
 def test_cm_solo_ve_su_cartera_en_ingresos_y_reportes_aunque_pida_otro_cm(api, auth, datos):
@@ -100,26 +98,23 @@ def test_admin_puede_filtrar_por_cm(api, auth, crear_usuario, datos):
 def test_tasa_de_renovacion_renovados_entre_vencidos(api, auth, crear_usuario, datos):
     r = api.get("/api/ingresos?anio=2026&mes=10&quincena=ambas", headers=auth(crear_usuario("admin.demo", rol="admin"))).json()
     tasa = {t["cm"]: t for t in r["tasa_renovacion"]}
-    # Ana: a1 (renovado), a2 (vencido), a5 (archivado) llegaron a su fecha; a3 (25 oct) aún no
     assert (tasa["Ana"]["vencidos"], tasa["Ana"]["renovados"], tasa["Ana"]["tasa"]) == (3, 1, 33.3)
-    assert (tasa["Beto"]["vencidos"], tasa["Beto"]["renovados"]) == (0, 0)       # b1 vence el 30
-    assert tasa["Por reasignar"]["vencidos"] == 1                                            # c1 llegó a su fecha
+    assert (tasa["Beto"]["vencidos"], tasa["Beto"]["renovados"]) == (0, 0)
+    assert tasa["Por reasignar"]["vencidos"] == 1
     assert r["tasa_total"] == {"vencidos": 4, "renovados": 1, "tasa": 25.0}
 
 
 def test_reporte_datos_secciones(api, auth, crear_usuario, datos):
     d = api.get("/api/reportes/datos?anio=2026&mes=10&quincena=ambas", headers=auth(crear_usuario("admin.demo", rol="admin"))).json()
     assert set(d) >= {"periodo", "resumen", "por_cm", "detalle", "prorrogas", "pendientes", "tasa_renovacion"}
-    assert len(d["detalle"]) == 5                    # 7 ciclos - a4 (septiembre) - a5 (archivado)
-    # prórrogas: NO se limitan al periodo (a4 es de septiembre); vencidas primero
+    assert len(d["detalle"]) == 5
     pr = d["prorrogas"]
     assert [(p["paquete"], p["vencida"], p["dias"]) for p in pr] == [("Básico", True, -1), ("Básico", False, 2)]
     assert [p["cliente"] for p in pr] == ["Cliente A", "Cliente A"] and float(pr[0]["restante"]) == 1500
-    # pendientes agrupados por CM: a2 vencido sin decisión; a4 también (septiembre, arrastrado)
     venc = d["pendientes"]["vencidos"]
-    assert [g["cm"] for g in venc] == ["Ana", "Por reasignar"] and len(venc[0]["items"]) == 2   # c1 (12 oct) también ya venció
+    assert [g["cm"] for g in venc] == ["Ana", "Por reasignar"] and len(venc[0]["items"]) == 2
     assert d["pendientes"]["renovados_sin_pago"] == []
-    assert d["pendientes"]["por_vencer"] == []                                  # a3 vence el 25: faltan 5 días (> 4)
+    assert d["pendientes"]["por_vencer"] == []
 
 
 def test_endpoints_validan_periodo(api, auth, datos):
@@ -134,7 +129,6 @@ def test_sin_token_no_hay_reportes(api):
         assert api.get(ruta).status_code == 401
 
 
-# ---------------------------------------------------------------------------------- PDF
 def test_pdf_se_genera_en_memoria_con_encabezado_de_periodo(api, auth, crear_usuario, datos):
     r = api.get("/api/reportes/pdf?anio=2026&mes=10&quincena=ambas", headers=auth(crear_usuario("admin.demo", rol="admin")))
     assert r.status_code == 200 and r.content.startswith(b"%PDF") and r.headers["content-type"] == "application/pdf"
@@ -167,7 +161,6 @@ def test_admin_solo_lectura_descarga_reportes(api, auth, crear_usuario, datos):
     assert api.get("/api/reportes/excel?anio=2026&mes=10&quincena=ambas", headers=h).status_code == 200
 
 
-# -------------------------------------------------------------------------------- Excel
 def _excel(api, h, q="ambas"):
     r = api.get(f"/api/reportes/excel?anio=2026&mes=10&quincena={q}", headers=h)
     assert r.status_code == 200
@@ -181,7 +174,7 @@ def test_excel_una_hoja_por_seccion_y_formulas_reales_en_totales(api, auth, crea
     fila_tot = det.max_row
     assert [det.cell(fila_tot, c).value for c in (5, 6, 7)] == [f"=SUM(E2:E{fila_tot - 1})", f"=SUM(F2:F{fila_tot - 1})",
                                                                 f"=SUM(G2:G{fila_tot - 1})"]
-    assert det["G2"].value == "=E2-F2"                                           # restante: fórmula, no valor
+    assert det["G2"].value == "=E2-F2"
     assert str(cm.cell(cm.max_row, 4).value).startswith("=SUM(") and str(cm["D2"].value).startswith("=SUMIFS(")
     assert str(cm.cell(cm.max_row, 7).value).startswith("=IF(")
     assert str(pr.cell(pr.max_row, 6).value).startswith("=SUM(") and pr["H2"].value.startswith("=G2-Resumen!")

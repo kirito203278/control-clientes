@@ -34,24 +34,21 @@ def test_seed(db, tmp_path):
     resumen = sembrar(db, credenciales_path=cred)
     assert resumen == {"usuarios": 5, "clientes": 16}
 
-    # contraseñas solo en el archivo; en BD solo hash bcrypt
     texto = cred.read_text()
     for u in db.scalars(select(Usuario)):
         assert u.password_hash.startswith("$2") and u.password_hash not in texto
         pwd = next(l.split("\t")[2] for l in texto.splitlines() if l.startswith(u.username + "\t"))
         assert verify_password(pwd, u.password_hash)
 
-    # credenciales FB cifradas y recuperables
     c = db.scalars(select(Cliente).where(Cliente.nombre == "Panadería La Espiga")).one()
     assert "@" not in c.correo_fb_enc and decrypt_value(c.correo_fb_enc).endswith("@fb.ejemplo.test")
 
-    # escenarios clave presentes
     assert db.scalar(select(func.count()).select_from(Cliente).where(Cliente.cm_id.is_(None))) == 1
     assert db.scalar(select(func.count()).select_from(ArchivoNoRenovado)) == 4
     multi = db.scalars(select(Cliente).where(Cliente.nombre == "Dra. Mariana Vélez")).one()
-    assert len(multi.paquetes) == 1          # un cliente = un paquete
+    assert len(multi.paquetes) == 1
     ic = db.scalars(select(PaqueteCliente).join(Cliente).where(Cliente.nombre == "Imprenta Central")).one()
-    assert ic.restante == 1000 and ic.prorroga_hasta < hoy()      # prórroga vencida con deuda, ya archivado
+    assert ic.restante == 1000 and ic.prorroga_hasta < hoy()
 
 
 def test_seed_se_niega_si_ya_hay_usuarios(db, tmp_path):

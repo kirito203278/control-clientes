@@ -12,7 +12,6 @@ from app.security.passwords import hash_password, verify_password
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
-# Hash de relleno: el login de un usuario inexistente tarda lo mismo que el de uno real
 _HASH_FALSO = hash_password("relleno-para-igualar-tiempos")
 
 

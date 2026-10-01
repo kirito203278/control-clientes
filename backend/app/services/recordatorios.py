@@ -1,4 +1,3 @@
-"""Recordatorio de pago para el cliente: texto ya redactado + enlace wa.me (sin APIs de mensajería)."""
 import datetime as dt
 import re
 from decimal import Decimal
@@ -8,7 +7,6 @@ from app.config import get_settings
 
 
 def normalizar_telefono(telefono: str | None) -> str | None:
-    """Dígitos listos para wa.me. México: 10 dígitos -> 52 + 10; '521' + 10 -> '52' + 10."""
     if not telefono:
         return None
     d = re.sub(r"\D", "", telefono)
@@ -35,8 +33,6 @@ def wa_url(telefono: str | None, texto: str) -> str | None:
 
 
 def crear_para_paquete(db, p, cm_id):
-    """Mensaje al cliente por saldo pendiente. Regla: una vez marcado como enviado NO se puede volver a enviar.
-    Devuelve (recordatorio, creado). Si ya había uno sin enviar, lo reutiliza (no duplica)."""
     from sqlalchemy import select
 
     from app.models import RecordatorioCliente
@@ -58,4 +54,4 @@ def crear_para_paquete(db, p, cm_id):
 
 
 class YaEnviado(Exception):
-    """El mensaje de este paquete ya se envió; no se permite enviarlo otra vez."""
+    pass

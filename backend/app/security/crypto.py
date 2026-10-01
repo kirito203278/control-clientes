@@ -1,8 +1,3 @@
-"""Cifrado AES-GCM de credenciales de Facebook de los clientes.
-
-La clave vive solo en AES_KEY_B64 (32 bytes, base64). Formato guardado:
-base64(nonce[12] + ciphertext+tag).
-"""
 import base64
 import os
 

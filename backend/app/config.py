@@ -1,8 +1,3 @@
-"""Configuración central, leída de variables de entorno / .env.
-
-Los secretos (JWT_SECRET, AES_KEY_B64, JOBS_SECRET, DATABASE_URL) NO tienen
-valor por defecto: sin .env la app no arranca, en vez de arrancar insegura.
-"""
 from functools import lru_cache
 
 import base64
@@ -17,8 +12,8 @@ class Settings(BaseSettings):
 
     database_url: str
     jwt_secret: str
-    aes_key_b64: str          # 32 bytes en base64 (AES-256)
-    jobs_secret: str          # header X-Jobs-Secret para los endpoints de cron externo
+    aes_key_b64: str
+    jobs_secret: str
 
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = 60 * 12
@@ -26,21 +21,19 @@ class Settings(BaseSettings):
     tz: str = "America/Mexico_City"
     agencia_nombre: str = "INNquietus"
     scheduler_enabled: bool = True
-    enable_docs: bool = False   # /docs (OpenAPI) solo en desarrollo
+    enable_docs: bool = False
 
-    # Reglas de negocio parametrizables (ver ESTADO.md)
-    ciclo_dias: int = 30                  # duración de un ciclo
-    prorroga_max_dias: int = 5            # naturales, desde que se activa la prórroga (la fecha es automática)
-    dias_para_decidir: int = 2            # días con la ventana de bloqueo activa antes de pasar a No renovados
-    aviso_dias_antes_renovacion: int = 4  # aviso "¿renueva?" (3 días antes de la fecha límite = R-1)
-    aviso_prorroga_dias: int = 3          # aviso antes de vencer una prórroga
-    purga_meses: int = 12                 # permanencia máxima en "No renovados" (1 año)
-    reingreso_meses: int = 2              # <2 meses: puede continuar; >=2: paquete nuevo y se borra historial
+    ciclo_dias: int = 30
+    prorroga_max_dias: int = 5
+    dias_para_decidir: int = 2
+    aviso_dias_antes_renovacion: int = 4
+    aviso_prorroga_dias: int = 3
+    purga_meses: int = 12
+    reingreso_meses: int = 2
 
     @field_validator("database_url")
     @classmethod
     def _normalizar_url_bd(cls, v: str) -> str:
-        """Neon/Render entregan postgres:// o postgresql://; SQLAlchemy necesita el driver explícito."""
         for prefijo in ("postgres://", "postgresql://"):
             if v.startswith(prefijo):
                 return "postgresql+psycopg2://" + v[len(prefijo):]

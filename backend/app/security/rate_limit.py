@@ -1,5 +1,3 @@
-"""Bloqueo tras 5 intentos fallidos de login en 15 min, por username, en memoria del proceso
-(se asume un solo proceso de uvicorn, igual que el scheduler)."""
 import datetime as dt
 import threading
 
@@ -35,6 +33,6 @@ def bloqueado(username: str, ahora: dt.datetime | None = None) -> bool:
         return len(h) >= LIMITE_INTENTOS
 
 
-def reiniciar_todo() -> None:  # para pruebas
+def reiniciar_todo() -> None:
     with _lock:
         _intentos.clear()

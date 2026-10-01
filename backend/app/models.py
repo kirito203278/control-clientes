@@ -1,5 +1,3 @@
-"""Modelos ORM. Espejo de migrations/sql/001_init.sql (esa es la fuente de verdad
-del esquema; los CHECK y triggers viven allá)."""
 import datetime as dt
 from decimal import Decimal
 
@@ -46,7 +44,7 @@ class CatalogoTipo(Base):
 class Cliente(Base):
     __tablename__ = "clientes"
     id: Mapped[int] = mapped_column(primary_key=True)
-    cm_id: Mapped[int | None] = mapped_column(ForeignKey("usuarios.id"))  # NULL = por reasignar
+    cm_id: Mapped[int | None] = mapped_column(ForeignKey("usuarios.id"))
     nombre: Mapped[str] = mapped_column(Text)
     correo_fb_enc: Mapped[str | None] = mapped_column(Text)
     password_fb_enc: Mapped[str | None] = mapped_column(Text)
@@ -61,7 +59,6 @@ class Cliente(Base):
 
 
 class PaqueteCliente(Base):
-    """Un CICLO de un paquete de un cliente."""
     __tablename__ = "paquetes_cliente"
     id: Mapped[int] = mapped_column(primary_key=True)
     cliente_id: Mapped[int] = mapped_column(ForeignKey("clientes.id", ondelete="CASCADE"))

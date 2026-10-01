@@ -1,4 +1,3 @@
-"""Reporte Excel: una hoja por sección y FÓRMULAS REALES en los totales (no valores pegados)."""
 import datetime as dt
 import io
 
@@ -25,7 +24,7 @@ def _encabezado(ws, fila, titulos, anchos):
         c.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
         ws.column_dimensions[get_column_letter(i)].width = a
     ws.row_dimensions[fila].height = 28
-    ws.freeze_panes = f"A{fila + 1}"      # (ws.cell() crearía una fila vacía y desplazaría los datos)
+    ws.freeze_panes = f"A{fila + 1}"
 
 
 def _total(ws, fila, ncols, formulas: dict[int, tuple[str, str]], etiqueta_col=1, etiqueta="Total"):
@@ -56,7 +55,6 @@ def generar_excel(datos: dict, generado: dt.datetime) -> bytes:
     ws_pr, ws_pe = wb.create_sheet("Prórrogas"), wb.create_sheet("Pendientes")
     ws_ta = wb.create_sheet("Tasa renovación")
 
-    # ---------------------------------------------------------- Detalle por paquete (base de las fórmulas)
     det = datos["detalle"]
     _encabezado(ws_det, 1, ["CM", "Cliente", "Paquete", "Tipo", "Costo", "Pagado", "Restante", "Fecha de renovación",
                             "Estado", "Semáforo"], [20, 30, 14, 12, 14, 14, 14, 16, 14, 12])
@@ -74,11 +72,10 @@ def generar_excel(datos: dict, generado: dt.datetime) -> bytes:
                                       7: (f"=SUM(G2:G{ult_det})", DINERO)}, etiqueta_col=2)
     ws_det.auto_filter.ref = f"A1:J{ult_det}"
 
-    # ----------------------------------------------------------------------------------- Por CM
     cms = datos["por_cm"]
     _encabezado(ws_cm, 1, ["CM", "Clientes", "Paquetes", "Proyección", "Cobrado", "Pendiente", "% cobrado"],
                 [26, 12, 12, 16, 16, 16, 13])
-    rng = lambda col: f"'Detalle paquetes'!${col}$2:${col}${ult_det}"  # noqa: E731
+    rng = lambda col: f"'Detalle paquetes'!${col}$2:${col}${ult_det}"
     for i, c in enumerate(cms, start=2):
         ws_cm.append([c["cm"], c["clientes"], f"=COUNTIFS({rng('A')},A{i})", f"=SUMIFS({rng('E')},{rng('A')},A{i})",
                       f"=SUMIFS({rng('F')},{rng('A')},A{i})", f"=D{i}-E{i}", f"=IF(D{i}=0,0,E{i}/D{i})"])
@@ -92,7 +89,6 @@ def generar_excel(datos: dict, generado: dt.datetime) -> bytes:
                                    6: (f"=D{fila_tot_cm}-E{fila_tot_cm}", DINERO),
                                    7: (f"=IF(D{fila_tot_cm}=0,0,E{fila_tot_cm}/D{fila_tot_cm})", PCT)})
 
-    # ------------------------------------------------------------------------------- Resumen
     ws_res.column_dimensions["A"].width, ws_res.column_dimensions["B"].width = 30, 34
     ws_res["A1"] = "Reporte de ingresos y renovaciones"
     ws_res["A1"].font = Font(bold=True, size=16, color=MORADO)
@@ -112,7 +108,6 @@ def generar_excel(datos: dict, generado: dt.datetime) -> bytes:
     ws_res["A16"].alignment = Alignment(wrap_text=True, vertical="top")
     ws_res.merge_cells("A16:B19")
 
-    # ------------------------------------------------------------------------------ Prórrogas
     pr = datos["prorrogas"]
     _encabezado(ws_pr, 1, ["CM", "Cliente", "Paquete", "Costo", "Pagado", "Restante por cobrar", "Fecha límite",
                            "Días (+ faltan / − retraso)", "Situación"], [20, 30, 14, 14, 14, 18, 14, 18, 30])
@@ -129,7 +124,6 @@ def generar_excel(datos: dict, generado: dt.datetime) -> bytes:
                                                                  font=Font(color="C62828", bold=True)))
     _total(ws_pr, len(pr) + 2, 9, {6: (f"=SUM(F2:F{ult_pr})", DINERO)}, etiqueta_col=2, etiqueta="Total por cobrar")
 
-    # ----------------------------------------------------------------------------- Pendientes
     _encabezado(ws_pe, 1, ["Categoría", "CM", "Cliente", "Paquete", "Restante", "Fecha de renovación", "Semáforo"],
                 [24, 22, 30, 14, 14, 18, 12])
     fila = 2
@@ -145,7 +139,6 @@ def generar_excel(datos: dict, generado: dt.datetime) -> bytes:
     _cebra(ws_pe, 2, ult_pe, 7)
     _total(ws_pe, fila, 7, {5: (f"=SUM(E2:E{ult_pe})", DINERO)}, etiqueta_col=3)
 
-    # -------------------------------------------------------------------- Tasa de renovación
     tr = datos["tasa_renovacion"]
     _encabezado(ws_ta, 1, ["CM", "Vencidos del periodo", "Renovados", "Tasa de renovación"], [28, 20, 14, 20])
     for i, r in enumerate(tr, start=2):

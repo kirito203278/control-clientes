@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-"""Genera .env desde .env.example con secretos NUEVOS. No sobrescribe un .env existente."""
 import base64
 import secrets
 import sys

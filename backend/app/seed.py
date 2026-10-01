@@ -1,13 +1,3 @@
-"""Datos de ejemplo (FICTICIOS) para desarrollo y pruebas.
-
-Las fechas son relativas a "hoy" para que cada escenario (por vencer, vencido,
-prórroga por vencer, prórroga vencida, No renovados antiguos...) siga vigente
-cuando se vuelva a sembrar. Las contraseñas son de EJEMPLO (fijas, para pruebas); también quedan en
-backend/seed_credentials.txt (ignorado por git). En producción NO se siembra: el admin crea a cada usuario con su contraseña.
-
-    python -m app.seed            # falla si ya hay usuarios
-    FORCE_SEED=true python -m app.seed   # (solo dev) vacía y vuelve a sembrar
-"""
 import datetime as dt
 import os
 import re
@@ -29,7 +19,6 @@ from app.security.passwords import hash_password
 CREDENCIALES_PATH = Path(__file__).resolve().parent.parent / "seed_credentials.txt"
 
 USUARIOS = [
-    # (nombre, username, rol, solo_lectura, contraseña de EJEMPLO — solo para pruebas; en producción las crea el admin)
     ("Admin Demo", "admin.demo", "admin", False, "Admin-Demo-2026"),
     ("Lectura Demo", "lectura.demo", "admin", True, "Lectura-Demo-2026"),
     ("Ana Ruiz", "ana.ruiz", "cm", False, "Ana-Demo-2026"),
@@ -60,7 +49,6 @@ def sembrar(db: Session, credenciales_path: Path | None = CREDENCIALES_PATH) -> 
     paq = {p.nombre: p.id for p in db.scalars(select(CatalogoPaquete))}
     tipo = {t.nombre: t.id for t in db.scalars(select(CatalogoTipo))}
 
-    # ---- usuarios
     lineas, users = [], {}
     for nombre, username, rol, ro, pwd in USUARIOS:
         u = Usuario(nombre=nombre, username=username, password_hash=hash_password(pwd),
@@ -71,7 +59,6 @@ def sembrar(db: Session, credenciales_path: Path | None = CREDENCIALES_PATH) -> 
     db.flush()
     admin, ana, beto, carla = (users[k] for k in ("admin.demo", "ana.ruiz", "beto.luna", "carla.soto"))
 
-    # ---- helpers
     n_cliente = 0
 
     def cliente(cm: Usuario | None, nombre: str, estado: str = "activo", obs: str | None = None) -> Cliente:
@@ -89,7 +76,6 @@ def sembrar(db: Session, credenciales_path: Path | None = CREDENCIALES_PATH) -> 
     def ciclo(c: Cliente, paquete: str, tp: str, costo: int, renov: int, *, estado="activo", decision="pendiente",
               pagos: list[tuple[int, int]] = (), prorroga: tuple[int, int] | None = None,
               anterior: PaqueteCliente | None = None, por: Usuario | None = None) -> PaqueteCliente:
-        """renov/pagos/prorroga en días relativos a hoy (negativo = pasado)."""
         f_ren = H + dt.timedelta(days=renov)
         p = PaqueteCliente(
             cliente_id=c.id, paquete_id=paq[paquete], tipo_id=tipo[tp], costo=Decimal(costo),
@@ -117,42 +103,36 @@ def sembrar(db: Session, credenciales_path: Path | None = CREDENCIALES_PATH) -> 
         db.add(ArchivoNoRenovado(cliente_id=c.id, cm_id=c.cm_id, motivo="Decidió no renovar",
                                  archivado_en=ts_ahora - dt.timedelta(days=dias)))
 
-    # ---- Ana
     ciclo(cliente(ana, "Panadería La Espiga"), "Básico", "Normal", 1500, 12)
     mv = cliente(ana, "Dra. Mariana Vélez", obs="Prefiere contacto por WhatsApp por las tardes.")
-    ciclo(mv, "Estándar", "Normal", 2500, 4, pagos=[(1000, -3)])               # aviso "¿renueva?" hoy (R-4), pagó la mitad
-    # Ya renovó (pagó completo): el ciclo se cierra ("renovado") y el siguiente empieza HOY (+30 días) con pagado = 0
+    ciclo(mv, "Estándar", "Normal", 2500, 4, pagos=[(1000, -3)])
     th = cliente(ana, "Taller Hermanos Ríos")
     th_viejo = ciclo(th, "Élite", "Dinamita", 4500, 2, estado="renovado", decision="si",
-                     pagos=[(4500, -1)])                                       # verde (renovación pagada)
+                     pagos=[(4500, -1)])
     ciclo(th, "Élite", "Dinamita", 4500, 30, anterior=th_viejo)
-    ciclo(cliente(ana, "Estética Bella Vista"), "Básico", "Fantasma", 1200, 1, decision="si", pagos=[(600, -2)])   # confirmó que renueva, debe 600 (amarillo)
-    # ---- Beto
-    ciclo(cliente(beto, "Gimnasio FuerzaMX"), "Estándar", "Normal", 2500, -2, estado="vencido")   # rojo
+    ciclo(cliente(ana, "Estética Bella Vista"), "Básico", "Fantasma", 1200, 1, decision="si", pagos=[(600, -2)])
+    ciclo(cliente(beto, "Gimnasio FuerzaMX"), "Estándar", "Normal", 2500, -2, estado="vencido")
     ciclo(cliente(beto, "Café Tlalli"), "Básico", "Normal", 1500, -6, estado="vencido",
-          pagos=[(700, -5)], prorroga=(-2, 3))                                 # prórroga activa: vence en 3 días
+          pagos=[(700, -5)], prorroga=(-2, 3))
     pl = cliente(beto, "Papelería El Lápiz")
     viejo = ciclo(pl, "Estándar", "Normal", 2500, -10, estado="renovado", decision="si",
-                  pagos=[(2500, -12)])                                         # renovó pagando completo
-    nuevo = ciclo(pl, "Élite", "Normal", 4500, 20, anterior=viejo)             # subió de nivel (contador de renovaciones en 0)
+                  pagos=[(2500, -12)])
+    nuevo = ciclo(pl, "Élite", "Normal", 4500, 20, anterior=viejo)
     db.add(Renovacion(ciclo_anterior_id=viejo.id, ciclo_nuevo_id=nuevo.id, paquete_anterior_id=paq["Estándar"],
                       paquete_nuevo_id=paq["Élite"], costo_anterior=Decimal(2500), costo_nuevo=Decimal(4500),
                       fecha=H - dt.timedelta(days=10), registrado_por=beto.id))
-    ic = cliente(beto, "Imprenta Central", estado="no_renovado")               # su prórroga venció sin pago completo
+    ic = cliente(beto, "Imprenta Central", estado="no_renovado")
     p_ic = ciclo(ic, "Estándar", "Normal", 2500, -12, estado="archivado", decision="no", pagos=[(1500, -11)], prorroga=(-12, -7))
     p_ic.archivado_en = ts_ahora - dt.timedelta(days=6)
     db.add(ArchivoNoRenovado(cliente_id=ic.id, cm_id=beto.id, motivo="La prórroga venció sin pago completo",
                              archivado_en=ts_ahora - dt.timedelta(days=6)))
     ciclo(cliente(beto, "Constructora Peña"), "Campaña", "Campaña", 6000, 9, pagos=[(3000, -2)])
-    # ---- Carla
-    ciclo(cliente(carla, "Florería Jazmín"), "Básico", "Normal", 1500, 15, decision="no", pagos=[(1500, -4)])   # marcado «no renovará»
+    ciclo(cliente(carla, "Florería Jazmín"), "Básico", "Normal", 1500, 15, decision="no", pagos=[(1500, -4)])
     ciclo(cliente(carla, "Despacho Contable Orozco"), "Élite", "Normal", 4500, 25)
     ciclo(cliente(carla, "Hotel Casa Azul"), "Estándar", "Dinamita", 2500, 6, pagos=[(1000, -1)])
-    # ---- No renovados (distintas antigüedades para probar reingreso y purga)
-    no_renovado(cliente(carla, "Veterinaria PatiTas"), 20, "Estándar", "Dinamita", 2500)        # <2 meses
-    no_renovado(cliente(beto, "Abarrotes Doña Lucha"), 70, "Básico", "Normal", 1500)            # >=2 meses
-    no_renovado(cliente(ana, "Refaccionaria Del Valle"), 370, "Básico", "Normal", 1500)         # >=1 año: purga
-    # ---- Por reasignar
+    no_renovado(cliente(carla, "Veterinaria PatiTas"), 20, "Estándar", "Dinamita", 2500)
+    no_renovado(cliente(beto, "Abarrotes Doña Lucha"), 70, "Básico", "Normal", 1500)
+    no_renovado(cliente(ana, "Refaccionaria Del Valle"), 370, "Básico", "Normal", 1500)
     ciclo(cliente(None, "Escuela de Baile Ritmo"), "Básico", "Normal", 1500, 7, por=admin)
 
     db.commit()

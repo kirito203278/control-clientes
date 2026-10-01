@@ -1,6 +1,3 @@
--- 003: la prórroga dura hasta 5 días naturales desde que se activa (antes 15).
--- NOT VALID: la regla rige para toda fila nueva o modificada, pero no rechaza prórrogas viejas ya guardadas con la regla anterior
--- (así la migración no falla en una base con datos).
 DO $$
 DECLARE c record;
 BEGIN

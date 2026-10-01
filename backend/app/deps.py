@@ -1,7 +1,3 @@
-"""Dependencias de autenticación y roles.
-
-Aislamiento por CM: NUNCA se confía en un cm_id del cliente HTTP; el filtrado vive en
-app/services/scope.py (capa de datos) y usa el usuario autenticado."""
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
@@ -41,7 +37,6 @@ def require_admin_write(user: Usuario = Depends(require_admin)) -> Usuario:
 
 
 def require_writer(user: Usuario = Depends(get_current_user)) -> Usuario:
-    """CM, o admin con escritura (puede operar por un CM; queda en bitácora donde aplica)."""
     if user.rol == "admin" and user.solo_lectura:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Esta cuenta es de solo lectura")
     return user

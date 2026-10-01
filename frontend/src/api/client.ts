@@ -13,18 +13,12 @@ export class ApiError extends Error {
     this.body = body
   }
 
-  /** Código de un error estructurado: {detail: {code, ...}} */
   get code(): string | undefined {
     const d = (this.body as { detail?: { code?: string } } | undefined)?.detail
     return typeof d === 'object' && d !== null ? d.code : undefined
   }
 }
 
-// sessionStorage, no localStorage: localStorage se comparte entre todas las
-// pestañas del mismo navegador, así que iniciar sesión en una pestaña (p. ej.
-// como admin) pisaba la sesión de otra pestaña abierta (p. ej. como CM) en
-// cuanto esa segunda pestaña volvía a leer el token (por ejemplo al
-// refrescar). sessionStorage es independiente por pestaña.
 let token: string | null = sessionStorage.getItem('token')
 
 export function setToken(t: string | null) {
@@ -67,8 +61,6 @@ export const api = {
   del: <T>(path: string, body?: unknown) => request<T>('DELETE', path, body ?? {}),
 }
 
-/** Descarga un archivo binario (p. ej. un PDF) autenticado y dispara la
- * descarga en el navegador, tomando el nombre del header Content-Disposition. */
 export async function downloadFile(path: string, fallbackFilename: string): Promise<void> {
   const headers: Record<string, string> = {}
   if (token) headers['Authorization'] = `Bearer ${token}`
@@ -76,7 +68,7 @@ export async function downloadFile(path: string, fallbackFilename: string): Prom
   const res = await fetch(`/api${path}`, { headers })
   if (!res.ok) {
     let body: unknown
-    try { body = await res.json() } catch { /* sin cuerpo JSON */ }
+    try { body = await res.json() } catch { body = undefined }
     throw new ApiError(res.status, body)
   }
 

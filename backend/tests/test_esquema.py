@@ -1,4 +1,3 @@
-"""Reglas críticas a nivel de base de datos (defensa en profundidad bajo la API)."""
 import datetime as dt
 from decimal import Decimal
 
@@ -73,7 +72,7 @@ def test_renovacion_antes_del_inicio_se_rechaza(db):
 
 def test_estado_invalido_se_rechaza(db):
     with pytest.raises(IntegrityError):
-        _ciclo(db, estado="por_vencer")  # "por vencer" se calcula, no se guarda
+        _ciclo(db, estado="por_vencer")
     db.rollback()
 
 
@@ -121,7 +120,6 @@ def test_dedupe_key_evita_notificaciones_duplicadas(db):
 
 
 def test_borrar_cliente_borra_archivo_y_paquetes_sin_error(db):
-    """Bug del proyecto anterior: archivo_no_renovados sin CASCADE rompía la purga."""
     cm, c, p = _ciclo(db)
     db.add(ArchivoNoRenovado(cliente_id=c.id, cm_id=cm.id))
     db.flush()
@@ -136,5 +134,4 @@ def test_actualizado_en_se_mantiene_solo(db):
     db.execute(text("SELECT pg_sleep(0.05)"))
     db.execute(text("UPDATE clientes SET nombre='Otro' WHERE id=:i"), {"i": c.id})
     despues = db.scalar(text("SELECT actualizado_en FROM clientes WHERE id=:i"), {"i": c.id})
-    # now() es constante dentro de una transacción: en una prueba envuelta en transacción solo comprobamos que no falle
     assert despues >= antes

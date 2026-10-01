@@ -112,7 +112,7 @@ function Reset({ u, onClose, onHecho }: { u: UsuarioEquipo; onClose: () => void;
 
 function Baja({ u, cms, onClose, onHecho }: { u: UsuarioEquipo; cms: UsuarioEquipo[]; onClose: () => void; onHecho: () => void }) {
   const total = u.clientes_activos + u.clientes_no_renovados
-  const [destino, setDestino] = useState<string>('')   // '' = elegir · 'por' = por reasignar · id
+  const [destino, setDestino] = useState<string>('')
   const [error, setError] = useState<string | null>(null)
   async function enviar() {
     setError(null)

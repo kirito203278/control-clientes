@@ -1,5 +1,3 @@
-"""Notificaciones dentro de la app. `dedupe_key` + ON CONFLICT hacen idempotente cualquier job:
-da igual que corran el scheduler y el cron externo a la vez, o que se dispare dos veces."""
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
@@ -8,7 +6,6 @@ from app.models import Cliente, Notificacion, Usuario
 
 
 def destinatarios(db: Session, cliente: Cliente) -> list[int]:
-    """El CM dueño; si el cliente está por reasignar, todos los admins activos."""
     if cliente.cm_id is not None:
         cm = db.get(Usuario, cliente.cm_id)
         if cm is not None and cm.activo:
@@ -18,7 +15,6 @@ def destinatarios(db: Session, cliente: Cliente) -> list[int]:
 
 def crear(db: Session, cliente: Cliente, tipo: str, mensaje: str, dedupe_base: str, paquete_id: int | None = None,
           requiere_respuesta: bool = False) -> int:
-    """Devuelve cuántas notificaciones NUEVAS se crearon (0 si ya existían)."""
     nuevas = 0
     for uid in destinatarios(db, cliente):
         res = db.execute(insert(Notificacion).values(

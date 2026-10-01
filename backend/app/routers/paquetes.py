@@ -1,4 +1,3 @@
-"""Paquetes (ciclos) de un cliente: alta, edición, pagos, prórroga y recordatorios al cliente."""
 import datetime as dt
 from decimal import Decimal
 
@@ -25,7 +24,7 @@ class PaquetePatch(BaseModel):
     paquete_id: int | None = None
     tipo_id: int | None = None
     costo: Decimal | None = Field(default=None, ge=0, max_digits=10, decimal_places=2)
-    fecha_inicio: dt.date | None = None      # la renovación se recalcula sola (+30 días)
+    fecha_inicio: dt.date | None = None
 
 
 class PagoIn(BaseModel):
@@ -64,7 +63,6 @@ def detalle(paquete_id: int, db: Session = Depends(get_db), user: Usuario = Depe
     p = obtener_paquete(db, user, paquete_id)
     hoy = hoy_mx()
     nombres = {u.id: u.nombre for u in db.scalars(select(Usuario))}
-    # cadena de ciclos del mismo paquete: hacia atrás y hacia adelante
     cadena, actual = [], p
     while actual is not None:
         cadena.append(actual)
@@ -118,7 +116,7 @@ def registrar_pago(paquete_id: int, datos: PagoIn, db: Session = Depends(get_db)
     p = obtener_paquete(db, user, paquete_id)
     bloqueo.exigir_libre(db, p.cliente_id, hoy_mx())
     g = pagos_svc.registrar_pago(db, user, p, datos.monto, datos.fecha, datos.nota)
-    nuevo = renovacion.renovar_si_confirmado_y_pagado(db, user, p)     # confirmó/pidió prórroga y pagó completo -> renueva solo
+    nuevo = renovacion.renovar_si_confirmado_y_pagado(db, user, p)
     hoy = hoy_mx()
     db.commit()
     db.refresh(p)
@@ -144,7 +142,6 @@ def borrar_pago(pago_id: int, db: Session = Depends(get_db), user: Usuario = Dep
 
 @router.post("/paquetes/{paquete_id}/prorroga")
 def solicitar_prorroga(paquete_id: int, db: Session = Depends(get_db), user: Usuario = Depends(require_writer)):
-    """«Solicitó prórroga»: dura 5 días naturales desde HOY; la fecha es automática y no se puede cambiar. Una por ciclo."""
     p = obtener_paquete(db, user, paquete_id)
     renovacion.solicitar_prorroga(db, user, p)
     db.commit()
@@ -159,7 +156,6 @@ def recordatorio_out(r: RecordatorioCliente, telefono: str | None) -> dict:
 
 @router.post("/paquetes/{paquete_id}/recordatorio", status_code=status.HTTP_201_CREATED)
 def crear_recordatorio(paquete_id: int, db: Session = Depends(get_db), user: Usuario = Depends(require_writer)):
-    """Mensaje ya redactado para el cliente. Si ya se marcó como enviado, no se puede volver a enviar (409)."""
     p = obtener_paquete(db, user, paquete_id)
     bloqueo.exigir_libre(db, p.cliente_id, hoy_mx())
     if p.costo - ciclos.pagado_hasta(p) <= 0:
@@ -185,7 +181,7 @@ def marcar_enviado(recordatorio_id: int, db: Session = Depends(get_db), user: Us
     r = db.get(RecordatorioCliente, recordatorio_id)
     if r is None:
         raise HTTPException(404, "Recordatorio no encontrado")
-    p = obtener_paquete(db, user, r.paquete_id)       # 404 si no es de su cartera
+    p = obtener_paquete(db, user, r.paquete_id)
     if r.enviado_en is not None:
         raise HTTPException(409, "Este mensaje ya estaba marcado como enviado")
     r.enviado_en = ahora()

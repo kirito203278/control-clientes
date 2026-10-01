@@ -1,6 +1,3 @@
-"""Runner de migraciones: aplica en orden los .sql de migrations/sql que falten,
-cada uno en su propia transacción, y los registra en schema_migrations.
-Idempotente: correrlo de nuevo no hace nada."""
 import time
 from pathlib import Path
 

@@ -1,5 +1,3 @@
-"""Reportes descargables (PDF presentable y Excel con fórmulas). Se generan en memoria (BytesIO).
-Admin (incluido solo lectura) ve todo y puede filtrar por CM; un CM obtiene el mismo reporte filtrado a su cartera."""
 from fastapi import APIRouter, Depends
 from fastapi.responses import Response
 from sqlalchemy.orm import Session

@@ -22,7 +22,6 @@ def resolver_periodo(anio: int | None, mes: int | None, quincena: str | None):
 @router.get("/ingresos")
 def ingresos(anio: int | None = None, mes: int | None = None, quincena: str | None = None, cm_id: int | None = None,
              db: Session = Depends(get_db), user: Usuario = Depends(get_current_user)):
-    """CM: su cartera. Admin (incluido solo lectura): por CM, total general y tasa de renovación."""
     hoy, per = resolver_periodo(anio, mes, quincena)
     datos = reporte_datos.construir(db, user, per, hoy, cm_id)
     salida = {"periodo": datos["periodo"], "totales": datos["resumen"],

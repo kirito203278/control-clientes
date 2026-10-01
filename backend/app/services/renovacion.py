@@ -1,4 +1,3 @@
-"""Ciclo de vida de un paquete: renovar, no renovar (programado o inmediato), prórroga, reingreso y purga."""
 import datetime as dt
 from decimal import Decimal
 
@@ -42,8 +41,6 @@ def enviar_a_no_renovados(db: Session, cliente: Cliente, motivo: str) -> None:
 
 
 def archivar(db: Session, p: PaqueteCliente, motivo: str) -> bool:
-    """Pasa el ciclo a archivado (no renovó). Si era el último vigente, el cliente completo pasa a No renovados.
-    Devuelve True si el cliente pasó a No renovados. La usan la acción del CM y los jobs automáticos."""
     es_ultimo = vigentes_del_cliente(db, p.cliente_id, excepto=p.id) == 0
     p.estado, p.renovacion_decision, p.archivado_en = "archivado", "no", ahora()
     notificar.marcar_leidas_de_paquete(db, p.id, TIPOS_AVISO)
@@ -55,8 +52,6 @@ def archivar(db: Session, p: PaqueteCliente, motivo: str) -> bool:
 
 def renovar(db: Session, user: Usuario, p: PaqueteCliente, *, paquete_id: int | None, tipo_id: int | None,
             costo: Decimal | None) -> PaqueteCliente:
-    """Cierra el ciclo y abre el siguiente con pagado = 0. La fecha NO se elige: el ciclo nuevo empieza HOY (el día en
-    que se confirma la renovación) y renueva `ciclo_dias` (30) días después. Solo se renueva lo ya pagado por completo."""
     if p.estado not in ciclos.VIGENTES:
         raise HTTPException(409, "Este paquete ya no está vigente")
     if p.cliente.estado != "activo":
@@ -64,7 +59,6 @@ def renovar(db: Session, user: Usuario, p: PaqueteCliente, *, paquete_id: int | 
     if not ciclos.pagado_completo(p):
         raise HTTPException(422, "Solo se puede registrar la renovación cuando el paquete está pagado por completo. "
                                  "Si el cliente aún debe, solicita una prórroga o márcalo como no renovado.")
-    # Cambiar de paquete SOLO ocurre al renovar: lo elegido ahora, o el plan guardado al confirmar «va a renovar»
     nuevo_pq = paquete_id or p.renovara_paquete_id or p.paquete_id
     nuevo_tp = tipo_id or p.renovara_tipo_id or p.tipo_id
     _validar_cambio_catalogo(db, p, nuevo_pq, nuevo_tp)
@@ -74,13 +68,13 @@ def renovar(db: Session, user: Usuario, p: PaqueteCliente, *, paquete_id: int | 
         nuevo_costo = p.renovara_costo if p.renovara_costo is not None else p.costo
     hoy = hoy_mx()
     if p.prorroga_hasta is not None:
-        inicio = p.fecha_renovacion                  # con prórroga se CONSERVA la fecha de renovación original
+        inicio = p.fecha_renovacion
     else:
-        inicio = min(p.confirmado_en or hoy, hoy)    # si no, el día que se confirmó «va a renovar» es el inicio
+        inicio = min(p.confirmado_en or hoy, hoy)
     nuevo = PaqueteCliente(cliente_id=p.cliente_id, paquete_id=nuevo_pq, tipo_id=nuevo_tp, costo=nuevo_costo,
                            fecha_inicio=inicio, fecha_renovacion=inicio + dt.timedelta(days=get_settings().ciclo_dias),
                            ciclo_anterior_id=p.id)
-    p.estado, p.renovacion_decision = "renovado", "si"       # se cierra el ciclo antes de abrir el nuevo (un solo paquete vigente)
+    p.estado, p.renovacion_decision = "renovado", "si"
     db.add(nuevo)
     db.flush()
     ciclos.recalcular_pagada(p)
@@ -96,16 +90,12 @@ def renovar(db: Session, user: Usuario, p: PaqueteCliente, *, paquete_id: int | 
 
 def confirmar_renovacion(db: Session, user: Usuario, p: PaqueteCliente, *, paquete_id: int | None = None,
                          tipo_id: int | None = None, costo: Decimal | None = None) -> PaqueteCliente | None:
-    """«Confirmó / va a renovar». Si ya pagó completo, se renueva en el momento (devuelve el ciclo nuevo).
-    Si aún no ha pagado: queda confirmada (amarillo) y ESE DÍA es el inicio del nuevo contrato. Antes de R no cambia nada más; al
-    terminar el contrato se bloquea y se pregunta por la prórroga. Dentro de la ventana (contrato ya terminado) se habilitan las
-    funciones solo el resto de hoy: SIN tolerancia de pago, a las 23:59 vuelve la ventana con prórroga / no renovó."""
     if p.estado not in ciclos.VIGENTES or p.cliente.estado != "activo":
         raise HTTPException(409, "Este paquete ya no está vigente")
     if p.renovacion_decision == "no":
         raise HTTPException(409, "Está marcado como «no renovará»: deshaz esa marca primero")
     hoy = hoy_mx()
-    if paquete_id or tipo_id or costo is not None:                     # el cambio de paquete se elige al confirmar que renueva
+    if paquete_id or tipo_id or costo is not None:
         _validar_cambio_catalogo(db, p, paquete_id or p.paquete_id, tipo_id or p.tipo_id)
         cambia = (paquete_id and paquete_id != p.paquete_id) or (tipo_id and tipo_id != p.tipo_id) or \
             (costo is not None and costo != p.costo)
@@ -115,14 +105,14 @@ def confirmar_renovacion(db: Session, user: Usuario, p: PaqueteCliente, *, paque
     if ciclos.pagado_completo(p):
         return renovar(db, user, p, paquete_id=None, tipo_id=None, costo=None)
     if p.renovacion_decision == "si" and not ciclos.bloqueado(p, hoy):
-        return None                                                    # ya estaba confirmado
+        return None
     if p.renovacion_decision == "si" and ciclos.bloqueado(p, hoy):
         raise HTTPException(409, "Ya confirmaste la renovación y sigue sin pagar: solicita la prórroga o marca que no renovó")
     en_ventana = ciclos.es_vencido(p, hoy)
     p.renovacion_decision = "si"
     p.confirmado_en = hoy
     if en_ventana:
-        p.gracia_hasta = hoy                                           # solo el resto de hoy (sin tolerancia de pago)
+        p.gracia_hasta = hoy
     notificar.marcar_leidas_de_paquete(db, p.id, TIPOS_AVISO)
     bitacora.registrar(db, user, "confirmar_renovacion", {"paquete_id": p.id, "en_ventana": en_ventana,
                                                           "gracia_hasta": str(p.gracia_hasta) if p.gracia_hasta else None})
@@ -131,8 +121,6 @@ def confirmar_renovacion(db: Session, user: Usuario, p: PaqueteCliente, *, paque
 
 
 def renovar_si_confirmado_y_pagado(db: Session, user: Usuario, p: PaqueteCliente) -> PaqueteCliente | None:
-    """Si ya confirmó que renueva (o pidió prórroga) y completó el pago, el paquete se renueva SOLO: mismo paquete, tipo y
-    costo; el ciclo nuevo empieza hoy (+30). Para cambiar de paquete se usa la siguiente renovación."""
     if confirmo_renovacion_activa(p) and ciclos.pagado_completo(p):
         return renovar(db, user, p, paquete_id=None, tipo_id=None, costo=None)
     return None
@@ -143,8 +131,6 @@ def confirmo_renovacion_activa(p: PaqueteCliente) -> bool:
 
 
 def solicitar_prorroga(db: Session, user: Usuario, p: PaqueteCliente) -> PaqueteCliente:
-    """Activa la prórroga: la fecha límite es AUTOMÁTICA (hoy + 5 días naturales); el CM no la elige. Una por ciclo.
-    Solo se ofrece a quien ya confirmó que renovará pero no ha pagado."""
     hoy = hoy_mx()
     if not ciclos.es_vencido(p, hoy):
         raise HTTPException(422, "La prórroga solo se solicita cuando ya pasó la fecha de renovación sin pagar")
@@ -165,9 +151,6 @@ def solicitar_prorroga(db: Session, user: Usuario, p: PaqueteCliente) -> Paquete
 
 def no_renovar(db: Session, user: Usuario, p: PaqueteCliente, *, accion: str, confirmar_nombre: str | None,
                eliminar_cliente: bool | None) -> dict:
-    """- conservar ANTES de terminar el contrato: queda marcado «no renovará» y se archiva solo al terminar (R 23:59).
-    - conservar ya vencido: se archiva en el momento.
-    - borrar: confirmación doble (nombre exacto del paquete); inmediato."""
     if p.estado not in ciclos.VIGENTES:
         raise HTTPException(409, "Este paquete ya no está vigente")
     cliente, hoy = p.cliente, hoy_mx()
@@ -212,7 +195,6 @@ def no_renovar(db: Session, user: Usuario, p: PaqueteCliente, *, accion: str, co
 
 
 def revertir_decision(db: Session, user: Usuario, p: PaqueteCliente) -> None:
-    """Deshace «no renovará» o «confirmó que renovará» mientras el contrato siga vigente (hasta R 23:59)."""
     if p.estado != "activo" or p.renovacion_decision not in ("no", "si") or hoy_mx() > p.fecha_renovacion:
         raise HTTPException(409, "No hay una marca que se pueda deshacer en este paquete")
     anterior = p.renovacion_decision
@@ -226,8 +208,6 @@ def revertir_decision(db: Session, user: Usuario, p: PaqueteCliente) -> None:
 
 def reingresar(db: Session, user: Usuario, cliente: Cliente, *, modo: str, paquete_id: int | None,
                tipo_id: int | None, costo: Decimal | None) -> PaqueteCliente:
-    """<2 meses en No renovados: continuar el paquete anterior o crear uno nuevo conservando historial.
-    >=2 meses: se fuerza paquete nuevo y se BORRA el historial anterior. El ciclo nuevo empieza HOY (+30 días)."""
     s = get_settings()
     if cliente.estado != "no_renovado":
         raise HTTPException(409, "El cliente no está en No renovados")
@@ -281,7 +261,6 @@ def reingresar(db: Session, user: Usuario, cliente: Cliente, *, modo: str, paque
 
 
 def purgar_no_renovados(db: Session, ahora_: dt.datetime | None = None) -> list[str]:
-    """Elimina definitivamente a los clientes con `purga_meses` (12 = 1 año) o más en No renovados."""
     ahora_ = ahora_ or ahora()
     limite = restar_meses(ahora_, get_settings().purga_meses)
     filas = db.execute(select(ArchivoNoRenovado, Cliente).join(Cliente, Cliente.id == ArchivoNoRenovado.cliente_id)
@@ -289,7 +268,7 @@ def purgar_no_renovados(db: Session, ahora_: dt.datetime | None = None) -> list[
                               Cliente.estado == "no_renovado")).all()
     eliminados = []
     for archivo, cliente in filas:
-        if vigentes_del_cliente(db, cliente.id) > 0:       # por seguridad: nunca purgar a quien tenga paquetes vigentes
+        if vigentes_del_cliente(db, cliente.id) > 0:
             continue
         eliminados.append(cliente.nombre)
         bitacora.registrar(db, None, "purga_no_renovados", {"cliente_id": cliente.id, "nombre": cliente.nombre,

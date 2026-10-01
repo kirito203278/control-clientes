@@ -1,10 +1,3 @@
-"""Pruebas de integración contra un Postgres REAL (no SQLite: el esquema usa CHECK,
-vistas, triggers y JSONB).
-
-Servidor de pruebas: variable TEST_DATABASE_URL (una URL de servidor con permiso para
-crear bases, p. ej. postgresql://usuario:clave@localhost:5434/postgres). Si no está, se
-arma desde ../.env apuntando a localhost:DB_PORT (`docker compose up -d db`).
-Cada corrida crea una base temporal y la borra al final."""
 import base64
 import os
 import secrets
@@ -15,16 +8,15 @@ import psycopg2
 import pytest
 from dotenv import dotenv_values
 
-# Secretos efímeros ANTES de importar app.* (Settings los exige)
 os.environ.setdefault("JWT_SECRET", secrets.token_urlsafe(32))
 os.environ.setdefault("AES_KEY_B64", base64.b64encode(secrets.token_bytes(32)).decode())
 os.environ.setdefault("JOBS_SECRET", secrets.token_urlsafe(16))
-os.environ.setdefault("DATABASE_URL", "postgresql+psycopg2://x:x@localhost/x")  # no se usa en pruebas
+os.environ.setdefault("DATABASE_URL", "postgresql+psycopg2://x:x@localhost/x")
 
-from sqlalchemy import create_engine  # noqa: E402
-from sqlalchemy.orm import Session  # noqa: E402
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session
 
-from app.migrations.run_migrations import run_migrations  # noqa: E402
+from app.migrations.run_migrations import run_migrations
 
 
 def _server_url() -> str | None:
@@ -66,7 +58,6 @@ def engine(test_db_url):
 
 @pytest.fixture
 def db(engine):
-    """Sesión aislada: todo lo que haga la prueba (incluidos commit del seed) se revierte."""
     conn = engine.connect()
     trans = conn.begin()
     session = Session(bind=conn, join_transaction_mode="create_savepoint", expire_on_commit=False)
@@ -76,10 +67,9 @@ def db(engine):
     conn.close()
 
 
-# ----------------------------------------------------------------- API / fábricas
-from fastapi.testclient import TestClient  # noqa: E402
+from fastapi.testclient import TestClient
 
-from app.security import passwords, rate_limit  # noqa: E402
+from app.security import passwords, rate_limit
 
 passwords.BCRYPT_ROUNDS = 4
 
@@ -114,7 +104,6 @@ def crear_usuario(db):
 
 @pytest.fixture
 def auth(api):
-    """auth(usuario) -> headers con un JWT válido."""
     def _auth(u):
         r = api.post("/api/auth/login", json={"username": u.username, "password": u._password})
         assert r.status_code == 200, r.text
@@ -124,7 +113,6 @@ def auth(api):
 
 @pytest.fixture
 def hoy_fijo():
-    """hoy_fijo(date) congela 'hoy' para probar reglas por fecha."""
     from app import dates
     yield dates.fijar_hoy
     dates.fijar_hoy(None)
@@ -132,7 +120,6 @@ def hoy_fijo():
 
 @pytest.fixture
 def fabrica(db, crear_usuario):
-    """Atajos para armar escenarios: cliente(cm, nombre) y ciclo(cliente, ...)."""
     import datetime as dt
     from decimal import Decimal
 

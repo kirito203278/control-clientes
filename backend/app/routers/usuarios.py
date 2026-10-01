@@ -1,4 +1,3 @@
-"""Gestión de equipo (admin): alta, reseteo de contraseña, baja con migración de cartera."""
 import re
 import unicodedata
 
@@ -18,7 +17,6 @@ router = APIRouter(prefix="/api/usuarios", tags=["equipo"])
 
 
 def _password_valida(v: str) -> str:
-    """La contraseña la elige el admin. Mínimo 8 caracteres; bcrypt solo usa los primeros 72 bytes, así que más no se acepta."""
     if len(v) < 8:
         raise ValueError("La contraseña debe tener al menos 8 caracteres")
     if len(v.encode("utf-8")) > 72:
@@ -94,7 +92,7 @@ def alta(datos: AltaIn, db: Session = Depends(get_db), admin: Usuario = Depends(
     bitacora.registrar(db, admin, "alta_usuario", {"usuario_id": u.id, "username": u.username, "rol": u.rol,
                                                    "solo_lectura": u.solo_lectura})
     db.commit()
-    return usuario_out(u)          # la contraseña la eligió el admin: nunca se devuelve ni se guarda en claro
+    return usuario_out(u)
 
 
 @router.post("/{usuario_id}/reset-password")
@@ -138,7 +136,6 @@ def baja(usuario_id: int, datos: BajaIn, db: Session = Depends(get_db),
             db.execute(update(Cliente).where(Cliente.id.in_(clientes)).values(cm_id=nuevo_id))
             db.execute(update(ArchivoNoRenovado).where(ArchivoNoRenovado.cliente_id.in_(clientes))
                        .values(cm_id=nuevo_id))
-            # Preguntas pendientes (p. ej. "¿El cliente pagó?") siguen al cliente
             if nuevo_id is not None:
                 db.execute(update(Notificacion).where(
                     Notificacion.usuario_id == u.id, Notificacion.cliente_id.in_(clientes),

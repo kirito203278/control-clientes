@@ -35,7 +35,6 @@ def test_bloqueo_tras_5_intentos_fallidos(api, crear_usuario):
     u = crear_usuario("ana.ruiz")
     for _ in range(5):
         assert api.post("/api/auth/login", json={"username": u.username, "password": "mala"}).status_code == 401
-    # aun con la contraseña correcta, queda bloqueado
     assert api.post("/api/auth/login", json={"username": u.username, "password": u._password}).status_code == 429
 
 
@@ -81,13 +80,13 @@ def test_alta_de_usuario_con_la_contrasena_que_elige_el_admin(api, db, crear_usu
     r = api.post("/api/usuarios", headers=h, json={"nombre": "María López", "rol": "cm", "password": "Mi-clave-2026"})
     assert r.status_code == 201
     datos = r.json()
-    assert datos["username"] == "maria.lopez" and "password" not in datos          # nunca se devuelve
+    assert datos["username"] == "maria.lopez" and "password" not in datos
     u = db.scalars(select(Usuario).where(Usuario.username == "maria.lopez")).one()
     assert verify_password("Mi-clave-2026", u.password_hash) and "Mi-clave-2026" not in u.password_hash
     listado = api.get("/api/usuarios", headers=h).text
     assert "Mi-clave-2026" not in listado and "password_hash" not in listado
     bit = db.scalars(select(Bitacora).where(Bitacora.accion == "alta_usuario")).one()
-    assert bit.detalle["username"] == "maria.lopez" and "Mi-clave" not in str(bit.detalle)   # la bitácora no guarda contraseñas
+    assert bit.detalle["username"] == "maria.lopez" and "Mi-clave" not in str(bit.detalle)
     assert api.post("/api/auth/login", json={"username": "maria.lopez", "password": "Mi-clave-2026"}).status_code == 200
 
 
@@ -181,7 +180,7 @@ def test_no_puedes_darte_de_baja_ni_dejar_al_sistema_sin_admin(api, crear_usuari
     h = auth(yo)
     assert api.post(f"/api/usuarios/{yo.id}/baja", headers=h, json={}).status_code == 409
     otro = crear_usuario("otro.admin", rol="admin")
-    assert api.post(f"/api/usuarios/{otro.id}/baja", headers=h, json={}).status_code == 200  # queda yo
+    assert api.post(f"/api/usuarios/{otro.id}/baja", headers=h, json={}).status_code == 200
     ro = crear_usuario("lectura.demo", rol="admin", solo_lectura=True)
     assert api.post(f"/api/usuarios/{ro.id}/baja", headers=h, json={}).status_code == 200
 

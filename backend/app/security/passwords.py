@@ -8,7 +8,7 @@ _LOWER = "abcdefghijkmnopqrstuvwxyz"
 _DIGITS = "23456789"
 _SYMBOLS = "!@#$%&*?-_"
 LONGITUD_CONTRASENA = 18
-BCRYPT_ROUNDS = 12  # las pruebas lo bajan para ir rápido
+BCRYPT_ROUNDS = 12
 
 
 def hash_password(password: str) -> str:
@@ -23,7 +23,6 @@ def verify_password(password: str, password_hash: str) -> bool:
 
 
 def generate_secure_password(length: int = LONGITUD_CONTRASENA) -> str:
-    """18 caracteres (sin ambiguos tipo l/1/O/0), con al menos uno de cada clase."""
     length = max(length, 16)
     pools = [_UPPER, _LOWER, _DIGITS, _SYMBOLS]
     chars = [secrets.choice(p) for p in pools]

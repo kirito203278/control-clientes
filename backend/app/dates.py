@@ -1,4 +1,3 @@
-"""Fechas de negocio en America/Mexico_City. `fijar_hoy` existe solo para pruebas de reglas por fecha."""
 import datetime as dt
 from zoneinfo import ZoneInfo
 

@@ -1,18 +1,3 @@
-"""Generador ÚNICO de datos para Ingresos en pantalla y para los reportes PDF/Excel.
-
-Definiciones (confirmadas con el usuario):
-  * Proyección del periodo = suma del costo de los paquetes (ciclos) cuya fecha de renovación cae en el periodo.
-    Se excluyen ciclos archivados (el cliente decidió no seguir) y eliminados.
-  * Cobrado = pagos de esos mismos ciclos con fecha <= fecha de corte (hoy). Pendiente = proyección - cobrado.
-  * Periodo cerrado (ya terminó): se reporta completo. Periodo en curso: "Periodo parcial, corte al <hoy>";
-    la proyección sigue siendo la del periodo completo.
-  * Tasa de renovación = renovados / vencidos del periodo, donde "vencido" es todo ciclo que llegó a su fecha
-    (fecha de renovación <= corte), incluidos los no renovados (archivados o eliminados).
-  * Los estados (semáforo, por vencer...) reflejan la situación ACTUAL; el dinero, el corte.
-  * Prórrogas (sección 4) y Pendientes de renovar (sección 5) son listas de trabajo: NO se limitan al periodo,
-    muestran todo lo vigente a la fecha de corte (una prórroga vencida de un mes anterior no debe esconderse).
-El aislamiento por CM vive en services/scope.py: un CM solo obtiene su cartera aunque pida otro cm_id.
-"""
 import datetime as dt
 from collections import defaultdict
 from decimal import Decimal
@@ -44,8 +29,6 @@ def _cargar(db: Session, user: Usuario, per: Periodo, cm_id: int | None, estados
 
 
 def _cargar_abiertos(db: Session, user: Usuario, cm_id: int | None) -> list[PaqueteCliente]:
-    """Todos los ciclos que aún pueden tener algo pendiente (sin importar su fecha de renovación)."""
-    # Además de lo vigente: ciclos archivados por prórroga vencida, que conservan saldo por cobrar (sección 4)
     q = paquetes_q(user).where(PaqueteCliente.estado.in_(ciclos.COBRABLES) |
                                ((PaqueteCliente.estado == "archivado") & PaqueteCliente.prorroga_hasta.is_not(None)))
     if user.rol == "admin" and cm_id is not None:
@@ -56,7 +39,7 @@ def _cargar_abiertos(db: Session, user: Usuario, cm_id: int | None) -> list[Paqu
 
 def construir(db: Session, user: Usuario, per: Periodo, hoy: dt.date, cm_id: int | None = None) -> dict:
     cms = {u.id: u.nombre for u in db.scalars(select(Usuario).where(Usuario.rol == "cm"))}
-    nombre_cm = lambda cid: cms.get(cid, "(CM dado de baja)") if cid else POR_REASIGNAR  # noqa: E731
+    nombre_cm = lambda cid: cms.get(cid, "(CM dado de baja)") if cid else POR_REASIGNAR
 
     def fila(p: PaqueteCliente) -> dict:
         pagado = ciclos.pagado_hasta(p, per.corte)
@@ -68,15 +51,13 @@ def construir(db: Session, user: Usuario, per: Periodo, hoy: dt.date, cm_id: int
             "decision": p.renovacion_decision, "prorroga_hasta": p.prorroga_hasta,
             "prorroga_registrada_en": p.prorroga_registrada_en}
 
-    orden_fila = lambda f: (f["cm"], f["cliente"].lower(), f["fecha_renovacion"], f["paquete_id"])  # noqa: E731
-    # ---------------------------------------------------------------- detalle por paquete (del periodo)
+    orden_fila = lambda f: (f["cm"], f["cliente"].lower(), f["fecha_renovacion"], f["paquete_id"])
     filas = sorted((fila(p) for p in _cargar(db, user, per, cm_id, ("activo", "vencido", "renovado"))), key=orden_fila)
     abiertos = sorted((fila(p) for p in _cargar_abiertos(db, user, cm_id)), key=orden_fila)
 
-    # ----------------------------------------------------------------------- por CM
     grupos: dict[int | None, dict] = {}
     if user.rol == "admin" and cm_id is None:
-        for cid in cms:                                  # todos los CM aparecen, aunque no tengan paquetes
+        for cid in cms:
             grupos[cid] = {"clientes": set(), "paquetes": 0, "proyeccion": CERO, "cobrado": CERO}
     elif user.rol == "cm":
         grupos[user.id] = {"clientes": set(), "paquetes": 0, "proyeccion": CERO, "cobrado": CERO}
@@ -89,19 +70,18 @@ def construir(db: Session, user: Usuario, per: Periodo, hoy: dt.date, cm_id: int
         g["proyeccion"] += f["costo"]
         g["cobrado"] += f["pagado"]
 
-    # ----------------------------------------------------------------------- tasa de renovación
     llegados = _cargar(db, user, per, cm_id, ("vencido", "renovado", "archivado", "eliminado"))
     tasa_g: dict[int | None, dict] = defaultdict(lambda: {"vencidos": 0, "renovados": 0})
     for p in llegados:
-        if p.fecha_renovacion > per.corte:               # aún no llega su fecha: no cuenta como vencido
+        if p.fecha_renovacion > per.corte:
             continue
         t = tasa_g[p.cliente.cm_id]
         t["vencidos"] += 1
         t["renovados"] += p.estado == "renovado"
     for p in (x for x in _cargar(db, user, per, cm_id, ("activo",)) if x.fecha_renovacion <= per.corte):
-        tasa_g[p.cliente.cm_id]["vencidos"] += 1         # llegó a su fecha y el job aún no lo marcó vencido
+        tasa_g[p.cliente.cm_id]["vencidos"] += 1
     for cid in grupos:
-        tasa_g[cid]                                      # asegura fila para todos los CM
+        tasa_g[cid]
 
     orden = sorted(grupos, key=lambda cid: (cid is None, nombre_cm(cid).lower()))
     por_cm = []
@@ -120,16 +100,14 @@ def construir(db: Session, user: Usuario, per: Periodo, hoy: dt.date, cm_id: int
                      "tasa": round(t["renovados"] / t["vencidos"] * 100, 1) if t["vencidos"] else 0.0})
     tv, tr = sum(t["vencidos"] for t in tasa), sum(t["renovados"] for t in tasa)
 
-    # ---------------------------------------------------------------------- prórrogas
     prorrogas = []
     for f in abiertos:
         if f["prorroga_hasta"] is not None and f["restante"] > 0:
-            dias = (f["prorroga_hasta"] - per.corte).days          # + faltan / - días de retraso
+            dias = (f["prorroga_hasta"] - per.corte).days
             prorrogas.append({**{k: f[k] for k in ("cm", "cliente", "paquete", "tipo", "costo", "pagado", "restante")},
                               "fecha_limite": f["prorroga_hasta"], "dias": dias, "vencida": dias < 0})
     prorrogas.sort(key=lambda r: (r["dias"], r["cm"], r["cliente"]))
 
-    # ------------------------------------------------------------ pendientes de renovar
     pendientes = {"por_vencer": defaultdict(list), "vencidos": defaultdict(list), "renovados_sin_pago": defaultdict(list)}
     for f in abiertos:
         if f["estado_efectivo"] == "vencido":
@@ -157,7 +135,6 @@ def construir(db: Session, user: Usuario, per: Periodo, hoy: dt.date, cm_id: int
 
 
 def ingresos_por_cliente(datos: dict) -> list[dict]:
-    """Tabla de la pantalla Ingresos: una fila por cliente con proyección (suma de sus paquetes del periodo) y actual."""
     por: dict[int, dict] = {}
     for f in datos["detalle"]:
         r = por.setdefault(f["cliente_id"], {"cliente_id": f["cliente_id"], "cliente": f["cliente"], "cm": f["cm"],

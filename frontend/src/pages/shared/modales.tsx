@@ -25,7 +25,6 @@ function Botones({ onClose, onOk, okText, disabled, danger }: { onClose: () => v
   )
 }
 
-/* ------------------------------------------------------------------ agregar / editar paquete */
 export function CamposPaquete({ v, set, paquetes, tipos }: {
   v: { paquete_id: string; tipo_id: string; costo: string; fecha_inicio: string }
   set: (v: { paquete_id: string; tipo_id: string; costo: string; fecha_inicio: string }) => void
@@ -95,7 +94,6 @@ export function EditarPaqueteModal({ p, esAdmin, onClose, onHecho }: { p: Paquet
   )
 }
 
-/* -------------------------------------------------------------------------------- renovar */
 export function RenovarModal({ p, onClose, onHecho }: { p: Paquete; onClose: () => void; onHecho: (nuevoId: number) => void }) {
   const cat = useCatalogos()
   const [cambiar, setCambiar] = useState(false)
@@ -108,7 +106,7 @@ export function RenovarModal({ p, onClose, onHecho }: { p: Paquete; onClose: () 
   const nivel = actual && elegido && elegido.orden !== actual.orden ? (elegido.orden > actual.orden ? 'Subir de nivel' : 'Bajar de nivel') : null
   const hoy = hoyIso()
   const pagado = p.restante <= 0
-  // con prórroga se conserva la fecha de renovación original; si ya confirmó, empieza el día de la confirmación; si no, hoy
+
   const inicioNuevo = p.prorroga_hasta ? p.fecha_renovacion : (p.confirmado_en ?? hoy)
 
   async function guardar() {
@@ -150,7 +148,6 @@ export function RenovarModal({ p, onClose, onHecho }: { p: Paquete; onClose: () 
   )
 }
 
-/** «Va a renovar»: aquí se elige si sigue con el mismo paquete o cambia. Es el único momento (junto con «Renovó») en que se puede cambiar. */
 export function ConfirmarRenovacionModal({ p, onClose, onHecho }: { p: Paquete; onClose: () => void; onHecho: (r: { renovado_automaticamente: number | null }) => void }) {
   const cat = useCatalogos()
   const [cambiar, setCambiar] = useState(false)
@@ -198,7 +195,6 @@ export function ConfirmarRenovacionModal({ p, onClose, onHecho }: { p: Paquete; 
   )
 }
 
-/* ----------------------------------------------------------------------------- no renovar */
 export function NoRenovarModal({ p, nombreCliente, onClose, onHecho }: {
   p: Paquete; nombreCliente: string; onClose: () => void; onHecho: (r: { cliente_eliminado: boolean; cliente_a_no_renovados: boolean; programado?: boolean }) => void
 }) {
@@ -256,7 +252,6 @@ export function NoRenovarModal({ p, nombreCliente, onClose, onHecho }: {
   )
 }
 
-/* -------------------------------------------------------------------------- agregar cliente */
 export function AgregarClienteModal({ onClose, onHecho, cms }: { onClose: () => void; onHecho: (id: number) => void; cms?: { id: number; nombre: string }[] }) {
   const cat = useCatalogos()
   const [d, setD] = useState({ nombre: '', correo_fb: '', password_fb: '', correo_contacto: '', telefono: '', observaciones: '' })

@@ -1,4 +1,3 @@
-"""Clientes y su ficha. Todo acceso pasa por services/scope.py (aislamiento por cm_id)."""
 import datetime as dt
 from decimal import Decimal
 
@@ -24,7 +23,7 @@ class PaqueteNuevo(BaseModel):
     paquete_id: int
     tipo_id: int
     costo: Decimal = Field(ge=0, max_digits=10, decimal_places=2)
-    fecha_inicio: dt.date | None = None      # se captura el INICIO; la renovación se calcula sola (+30 días)
+    fecha_inicio: dt.date | None = None
 
 
 class ClienteIn(BaseModel):
@@ -34,7 +33,7 @@ class ClienteIn(BaseModel):
     correo_contacto: str | None = None
     telefono: str | None = None
     observaciones: str | None = None
-    cm_id: int | None = None          # solo lo usa un admin; un CM siempre queda como dueño
+    cm_id: int | None = None
     paquetes: list[PaqueteNuevo] = []
 
 
@@ -99,7 +98,7 @@ def listar(quincena: int | None = Query(default=None, ge=1, le=2), estado: str =
     consulta = clientes_q(user).order_by(Cliente.nombre)
     if estado != "todos":
         consulta = consulta.where(Cliente.estado == estado)
-    if user.rol == "admin":                       # un CM nunca puede filtrar por otro cm_id
+    if user.rol == "admin":
         if por_reasignar:
             consulta = consulta.where(Cliente.cm_id.is_(None))
         elif cm_id is not None:
@@ -175,7 +174,7 @@ def editar(cliente_id: int, datos: ClientePatch, db: Session = Depends(get_db),
             setattr(c, k, campos[k] or None)
     if "correo_fb" in campos:
         c.correo_fb_enc = encrypt_value(campos["correo_fb"]) if campos["correo_fb"] else None
-    if "password_fb" in campos and campos["password_fb"]:      # vacío = no cambiar
+    if "password_fb" in campos and campos["password_fb"]:
         c.password_fb_enc = encrypt_value(campos["password_fb"])
     if user.rol == "admin":
         bitacora.registrar(db, user, "editar_cliente_admin", {"cliente_id": c.id, "campos": sorted(campos)})
@@ -196,7 +195,6 @@ def ver_password(cliente_id: int, db: Session = Depends(get_db), user: Usuario =
 @router.delete("/{cliente_id}")
 def eliminar(cliente_id: int, confirmar_nombre: str, db: Session = Depends(get_db),
              user: Usuario = Depends(require_writer)):
-    """Borrado definitivo con doble confirmación: hay que escribir el nombre exacto del cliente."""
     c = obtener_cliente(db, user, cliente_id)
     bloqueo.exigir_libre(db, c.id, hoy_mx())
     if confirmar_nombre != c.nombre:

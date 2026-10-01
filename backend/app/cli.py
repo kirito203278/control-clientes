@@ -1,11 +1,3 @@
-"""Utilidades de línea de comandos para producción (sin datos de ejemplo).
-
-    python -m app.cli crear-admin "Nombre Apellido"
-        Crea un administrador (con escritura) con contraseña generada de 18 caracteres, mostrada UNA vez.
-        Es la forma de crear el primer admin: el alta de usuarios de la app exige estar ya dentro como admin.
-    python -m app.cli reset-password usuario
-        Genera una contraseña nueva para un usuario existente (p. ej. si se pierde la del único admin).
-"""
 import sys
 
 from sqlalchemy import select
@@ -16,6 +8,11 @@ from app.database import get_sessionmaker
 from app.models import Usuario
 from app.routers.usuarios import username_disponible
 from app.security.passwords import generate_secure_password, hash_password
+
+
+USO = """Uso:
+  python -m app.cli crear-admin \"Nombre Apellido\"   crea un administrador con una contraseña temporal (se muestra una vez)
+  python -m app.cli reset-password usuario         genera una contraseña nueva para un usuario existente"""
 
 
 def crear_admin(db: Session, nombre: str) -> tuple[str, str]:
@@ -56,7 +53,7 @@ def main(argv: list[str]) -> int:
             return 1
         print(f"Contraseña nueva para {argv[2]}: {password}\nGuárdala ahora: no se puede volver a mostrar.")
         return 0
-    print(__doc__)
+    print(USO)
     return 2
 
 

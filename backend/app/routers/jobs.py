@@ -1,6 +1,3 @@
-"""Respaldo para cron externo (cron-job.org): el hosting gratuito duerme el proceso y APScheduler puede no
-estar despierto a las 12:00. La propia llamada lo despierta y ejecuta el job. Protegido con X-Jobs-Secret,
-no con JWT: quien llama es un servicio, no una persona."""
 import hmac
 
 from fastapi import APIRouter, Header, HTTPException

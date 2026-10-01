@@ -1,6 +1,4 @@
 #!/usr/bin/env bash
-# Prueba local SIN Docker y SIN sudo: Postgres embebido (npm) + datos de ejemplo + app en http://localhost:8000
-# Requiere: python3, node/npm. Los datos viven en .devpg/ (ignorado por git). Detener: Ctrl+C.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 [ -f .env ] || python3 scripts/generar_env.py

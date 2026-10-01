@@ -1,7 +1,6 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
-// En desarrollo, /api se redirige al backend. En producción el backend sirve este build (backend/app/static).
 export default defineConfig({
   plugins: [react()],
   server: {

@@ -1,4 +1,3 @@
-"""Catálogos editables de Paquete y Tipo (se desactivan, nunca se borran)."""
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select

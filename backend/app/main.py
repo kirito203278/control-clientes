@@ -40,7 +40,7 @@ async def cabeceras_de_seguridad(request, call_next):
     resp.headers.setdefault("X-Frame-Options", "DENY")
     resp.headers.setdefault("Referrer-Policy", "same-origin")
     if request.url.path.startswith("/api/"):
-        resp.headers.setdefault("Cache-Control", "no-store")           # datos de clientes: nada en cachés
+        resp.headers.setdefault("Cache-Control", "no-store")
     return resp
 
 
@@ -54,7 +54,6 @@ def health():
     return {"ok": True}
 
 
-# --- Frontend (build de Vite en app/static). En desarrollo no existe y se usa `npm run dev` con proxy.
 STATIC = Path(__file__).parent / "static"
 if (STATIC / "index.html").exists():
     @app.get("/{ruta:path}", include_in_schema=False)
@@ -62,6 +61,6 @@ if (STATIC / "index.html").exists():
         if ruta.startswith("api/"):
             raise HTTPException(404, "No encontrado")
         archivo = (STATIC / ruta).resolve()
-        if ruta and archivo.is_file() and STATIC.resolve() in archivo.parents:   # sin salirse de /static
+        if ruta and archivo.is_file() and STATIC.resolve() in archivo.parents:
             return FileResponse(archivo)
         return FileResponse(STATIC / "index.html")

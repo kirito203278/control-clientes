@@ -1,4 +1,3 @@
-"""Cortes de quincena, fin de mes (28 a 31 días) y periodo en curso."""
 import datetime as dt
 
 import pytest
@@ -40,8 +39,8 @@ def test_periodo_en_curso_es_parcial_con_corte_a_hoy():
 
 
 def test_quincena_a_medias_y_ultimo_dia_aun_es_parcial():
-    assert not construir_periodo(2026, 10, "1", D(2026, 10, 15)).cerrado       # el día 15 todavía no termina
-    assert construir_periodo(2026, 10, "1", D(2026, 10, 16)).cerrado           # 1ra quincena cerrada al día siguiente
+    assert not construir_periodo(2026, 10, "1", D(2026, 10, 15)).cerrado
+    assert construir_periodo(2026, 10, "1", D(2026, 10, 16)).cerrado
     assert not construir_periodo(2026, 10, "2", D(2026, 10, 31)).cerrado
     assert construir_periodo(2026, 10, "2", D(2026, 11, 1)).cerrado
 

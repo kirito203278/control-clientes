@@ -1,7 +1,3 @@
-"""APScheduler dentro del proceso, hora de México:
-  * renovaciones y prórrogas: 00:05 (poco después de las 23:59 en que termina el contrato) y 12:00
-  * purga de No renovados (1 año): 12:10
-Respaldo: POST /api/jobs/run/{nombre} para cron-job.org (el hosting gratuito puede dormir el proceso)."""
 import logging
 from zoneinfo import ZoneInfo
 

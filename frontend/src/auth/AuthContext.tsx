@@ -7,7 +7,7 @@ interface AuthContextValue {
   loading: boolean
   login: (username: string, password: string) => Promise<Usuario>
   logout: () => void
-  /** Puede escribir: CM o admin que no es de solo lectura. */
+
   puedeEscribir: boolean
 }
 

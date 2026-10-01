@@ -1,4 +1,3 @@
-"""Emisión y verificación de JWT de sesión (12 h)."""
 import datetime as dt
 
 import jwt

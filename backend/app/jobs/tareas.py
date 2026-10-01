@@ -1,7 +1,3 @@
-"""Tareas programadas (00:05 y 12:00 las dos primeras; 12:10 la purga). Idempotentes: se pueden correr varias
-veces el mismo día sin duplicar efectos (notificaciones con dedupe_key, estados filtrados por fecha).
-
-Corren a las 00:05 para que los cambios de estado ocurran poco después de las 23:59 del día de renovación."""
 import datetime as dt
 import logging
 
@@ -28,10 +24,6 @@ def _paquetes(db: Session, *condiciones):
 
 
 def avisos_renovacion(db: Session, hoy: dt.date | None = None) -> dict:
-    """1) Avisa «¿renueva?» 4 días antes de la renovación (3 días antes de la fecha límite R-1).
-    2) Pasada la fecha (R 23:59) sin decisión: marca vencido y avisa del bloqueo.
-    3) Los marcados «no renovará» se archivan al terminar su contrato.
-    4) Sin decisión tras `dias_para_decidir` días de bloqueo: pasan solos a No renovados."""
     hoy = hoy or hoy_mx()
     s = get_settings()
     avisos = vencidos = auto_no_renueva = programados = 0
@@ -41,7 +33,7 @@ def avisos_renovacion(db: Session, hoy: dt.date | None = None) -> dict:
         if c.estado != "activo":
             continue
         dias = (p.fecha_renovacion - hoy).days
-        if p.renovacion_decision == "no":                                # marcado por el CM
+        if p.renovacion_decision == "no":
             if hoy > p.fecha_renovacion:
                 archivar(db, p, "No renovó (marcado por el CM)")
                 programados += 1
@@ -55,10 +47,9 @@ def avisos_renovacion(db: Session, hoy: dt.date | None = None) -> dict:
                     f"({'hoy' if dias == 0 else 'mañana' if dias == 1 else f'en {dias} días'}). ¿Renueva?",
                     f"renov:{p.id}", paquete_id=p.id)
             continue
-        # Ya pasó su fecha sin renovarse (sin decisión, o confirmó que renueva pero no ha pagado)
         if ciclos.prorroga_activa(p, hoy) or ciclos.gracia_activa(p, hoy):
             continue
-        limite = ciclos.limite_decision(p)       # solo existe si NO ha contestado (2 días); quien confirmó no tiene plazo
+        limite = ciclos.limite_decision(p)
         if limite is not None and hoy > limite:
             archivar(db, p, "No renovó: sin decisión")
             auto_no_renueva += 1
@@ -79,8 +70,6 @@ def avisos_renovacion(db: Session, hoy: dt.date | None = None) -> dict:
 
 
 def avisos_prorroga(db: Session, hoy: dt.date | None = None) -> dict:
-    """Avisa 3 días antes de que venza una prórroga. Si venció sin pago completo: el cliente pasa SOLO a No renovados,
-    se deja listo el mensaje para el cliente (una sola vez) y se avisa al CM."""
     hoy = hoy or hoy_mx()
     margen = get_settings().aviso_prorroga_dias
     proximas = vencidas = 0
@@ -110,7 +99,6 @@ def avisos_prorroga(db: Session, hoy: dt.date | None = None) -> dict:
 
 
 def purga_no_renovados(db: Session) -> dict:
-    """12:10 · elimina definitivamente a los clientes con 1 año en No renovados."""
     eliminados = purgar_no_renovados(db)
     db.commit()
     return {"eliminados": len(eliminados)}
@@ -120,7 +108,6 @@ JOBS = {"renovaciones": avisos_renovacion, "prorrogas": avisos_prorroga, "purga_
 
 
 def ejecutar(nombre: str, origen: str = "manual") -> dict:
-    """Corre un job con su propia sesión y deja registro en jobs_ejecuciones."""
     with get_sessionmaker()() as db:
         try:
             resultado = JOBS[nombre](db)

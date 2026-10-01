@@ -11,7 +11,6 @@ export function fechaHora(iso: string): string {
   return new Date(iso).toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short', timeZone: 'America/Mexico_City' })
 }
 
-/** Fecha de hoy en America/Mexico_City como YYYY-MM-DD (no la del navegador, para que coincida con el servidor). */
 export function hoyIso(): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Mexico_City' }).format(new Date())
 }

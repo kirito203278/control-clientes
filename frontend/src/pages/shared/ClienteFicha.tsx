@@ -41,7 +41,7 @@ export default function ClienteFicha({ clienteId, paqueteInicial, onChanged, onD
   const recargarTodo = async (sel?: number | null) => { await cargar(sel); onChanged() }
   const enNoRenovados = ficha.estado === 'no_renovado'
   const hayBloqueo = ficha.paquetes.some((p) => p.bloqueado)
-  const escribe = puedeEscribir && !hayBloqueo        // con un paquete bloqueado solo se permiten las salidas (renovó / no renovó / prórroga)
+  const escribe = puedeEscribir && !hayBloqueo
 
   return (
     <div>
@@ -82,7 +82,6 @@ export default function ClienteFicha({ clienteId, paqueteInicial, onChanged, onD
   )
 }
 
-/* ------------------------------------------------------------------- datos del cliente */
 function DatosCliente({ ficha, puedeEscribir, onGuardado, onEliminado }: { ficha: Ficha; puedeEscribir: boolean; onGuardado: (f: Ficha) => void; onEliminado: () => void }) {
   const base = { nombre: ficha.nombre, correo_fb: ficha.correo_fb ?? '', correo_contacto: ficha.correo_contacto ?? '', telefono: ficha.telefono ?? '', observaciones: ficha.observaciones ?? '' }
   const [d, setD] = useState(base)
@@ -151,7 +150,6 @@ function DatosCliente({ ficha, puedeEscribir, onGuardado, onEliminado }: { ficha
   )
 }
 
-/* ----------------------------------------------------------------------------- paquetes */
 function Paquetes({ ficha, paqueteId, setPaqueteId, puedeEscribir, hayBloqueo, recargar, sinPaquetes, avisar, onClienteGone }: {
   ficha: Ficha; paqueteId: number | null; setPaqueteId: (id: number) => void; puedeEscribir: boolean; hayBloqueo: boolean
   recargar: (sel?: number | null) => Promise<void>; sinPaquetes: boolean; avisar: (t: string) => void; onClienteGone: () => void
@@ -170,7 +168,7 @@ function Paquetes({ ficha, paqueteId, setPaqueteId, puedeEscribir, hayBloqueo, r
 
   const cambio = async (sel?: number | null) => { await recargar(sel ?? paqueteId); await cargarDet() }
   const vigente = det ? ficha.paquetes.some((p) => p.id === det.id) : false
-  const escribe = puedeEscribir && !hayBloqueo       // un paquete bloqueado del cliente deja solo las salidas
+  const escribe = puedeEscribir && !hayBloqueo
 
   if (sinPaquetes && !det) return <div className="card" style={{ padding: 20 }}><p className="muted" style={{ margin: 0 }}>Este cliente no tiene paquete vigente (un cliente tiene un solo paquete).</p></div>
   return (
@@ -259,7 +257,6 @@ function Paquetes({ ficha, paqueteId, setPaqueteId, puedeEscribir, hayBloqueo, r
   )
 }
 
-/* ------------------------------------------------------------------------------- pagos */
 function Pagos({ det, puedeEscribir, alCambiar, avisar }: { det: PaqueteDetalle; puedeEscribir: boolean; alCambiar: (sel?: number | null) => Promise<void>; avisar: (t: string) => void }) {
   const [monto, setMonto] = useState('')
   const [fechaPago, setFechaPago] = useState(hoyIso())
@@ -302,8 +299,6 @@ function Pagos({ det, puedeEscribir, alCambiar, avisar }: { det: PaqueteDetalle;
   )
 }
 
-/* ----------------------------------------------------------------------------- bloqueo y prórroga */
-/** Ventana de decisión DENTRO del cliente: no bloquea el resto del sistema, solo a este cliente. */
 function VentanaDecision({ p, ficha, onHecho, avisar }: { p: Paquete; ficha: Ficha; onHecho: (sel?: number | null) => void; avisar: (t: string) => void }) {
   const [modal, setModal] = useState<'renovar' | 'no' | 'va' | null>(null)
   const [trabajando, setTrabajando] = useState(false)

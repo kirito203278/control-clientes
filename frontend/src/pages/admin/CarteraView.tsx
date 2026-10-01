@@ -10,7 +10,7 @@ import { AgregarClienteModal } from '../shared/modales'
 export default function CarteraView({ abrirId, abrirPaquete, cmsRefresco }: { abrirId: number | null; abrirPaquete: number | null; cmsRefresco: number }) {
   const { puedeEscribir } = useAuth()
   const [cms, setCms] = useState<UsuarioEquipo[]>([])
-  const [filtro, setFiltro] = useState<string>('todos')          // 'todos' | 'por' | cm_id
+  const [filtro, setFiltro] = useState<string>('todos')
   const [clientes, setClientes] = useState<ClienteListItem[] | null>(null)
   const [abierto, setAbierto] = useState<number | null>(abrirId)
   const [paq, setPaq] = useState<number | null>(abrirPaquete)

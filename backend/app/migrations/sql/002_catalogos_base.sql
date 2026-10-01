@@ -1,4 +1,3 @@
--- 002_catalogos_base.sql — valores iniciales de los catálogos editables por el admin.
 INSERT INTO catalogo_paquetes (nombre, orden) VALUES
     ('Básico', 1), ('Estándar', 2), ('Élite', 3), ('Campaña', 4)
 ON CONFLICT (nombre) DO NOTHING;

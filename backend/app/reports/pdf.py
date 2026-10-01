@@ -1,4 +1,3 @@
-"""Reporte PDF presentable (ReportLab). Se genera en memoria (BytesIO), sin archivos temporales."""
 import datetime as dt
 import io
 
@@ -27,7 +26,6 @@ ANCHO = landscape(A4)[0] - 3 * cm
 
 
 def _tabla(encabezados, filas, anchos, derecha=(), total=None, estilos_extra=()):
-    """Tabla con encabezado morado, cebra suave y fila de total opcional. `derecha`: columnas numéricas."""
     def celda(v, col):
         return v if not isinstance(v, str) else Paragraph(v, CELL_R if col in derecha else CELL)
     cabecera = [Paragraph(f"<b>{h}</b>", ParagraphStyle("th", parent=CELL_R if i in derecha else CELL, textColor=colors.white))
@@ -73,7 +71,6 @@ def generar_pdf(datos: dict, generado: dt.datetime) -> bytes:
                             bottomMargin=1.8 * cm, title=f"Reporte {per['etiqueta']}", author=get_settings().agencia_nombre)
     el = []
 
-    # ------------------------------------------------------------------ encabezado
     logo = Image(str(b.LOGO_PATH), width=2.2 * cm, height=2.2 * cm, kind="proportional") if b.LOGO_PATH.exists() else ""
     titulo = [Paragraph("Reporte de ingresos y renovaciones", H1), Paragraph(per["etiqueta"].capitalize(), ParagraphStyle(
         "sub", parent=BODY, fontSize=12, textColor=b.PURPLE)), Paragraph(
@@ -88,7 +85,6 @@ def generar_pdf(datos: dict, generado: dt.datetime) -> bytes:
                                ("TOPPADDING", (0, 0), (-1, -1), 5), ("BOTTOMPADDING", (0, 0), (-1, -1), 5)]))
     el.append(banda)
 
-    # ------------------------------------------------------------ 1. resumen general
     el.append(Paragraph("1. Resumen general", H2))
     tarjetas = [("Proyección", dinero(res["proyeccion"]), b.PURPLE), ("Cobrado", dinero(res["cobrado"]), b.GOOD),
                 ("Pendiente", dinero(res["pendiente"]), b.WARN), ("% cobrado", f"{res['pct_cobrado']:.1f}%", b.PURPLE_DARK)]
@@ -102,7 +98,6 @@ def generar_pdf(datos: dict, generado: dt.datetime) -> bytes:
         f"{res['clientes']} cliente(s) y {res['paquetes']} paquete(s) con renovación del {fecha(per['desde'])} al "
         f"{fecha(per['hasta'])}. Cobrado cuenta hasta el {fecha(per['corte'])}; la proyección es la del periodo completo.", SMALL)]
 
-    # ------------------------------------------------------------------ 2. por CM
     el.append(Paragraph("2. Por CM", H2))
     t = datos["total_cm"]
     filas = [[c["cm"], str(c["clientes"]), str(c["paquetes"]), dinero(c["proyeccion"]), dinero(c["cobrado"]),
@@ -112,7 +107,6 @@ def generar_pdf(datos: dict, generado: dt.datetime) -> bytes:
                      total=["Total", str(t["clientes"]), str(t["paquetes"]), dinero(t["proyeccion"]), dinero(t["cobrado"]),
                             dinero(t["pendiente"]), f"{t['pct_cobrado']:.1f}%"]) if filas else _vacio())
 
-    # ------------------------------------------------------- 3. detalle por paquete
     el.append(PageBreak())
     el.append(Paragraph("3. Detalle por paquete", H2))
     det = datos["detalle"]
@@ -127,7 +121,6 @@ def generar_pdf(datos: dict, generado: dt.datetime) -> bytes:
     else:
         el.append(_vacio())
 
-    # ------------------------------------------------------------------ 4. prórrogas
     el.append(Paragraph("4. Prórrogas", H2))
     pr = datos["prorrogas"]
     if pr:
@@ -144,7 +137,6 @@ def generar_pdf(datos: dict, generado: dt.datetime) -> bytes:
     else:
         el.append(_vacio("No hay prórrogas activas ni vencidas con saldo pendiente."))
 
-    # ----------------------------------------------------- 5. pendientes de renovar
     el.append(PageBreak())
     el.append(Paragraph("5. Pendientes de renovar", H2))
     hay = False
@@ -167,7 +159,6 @@ def generar_pdf(datos: dict, generado: dt.datetime) -> bytes:
     else:
         el.append(_vacio("Sin pendientes de renovación."))
 
-    # --------------------------------------------------------- 6. tasa de renovación
     el.append(Paragraph("6. Tasa de renovación por CM", H2))
     tr, tt = datos["tasa_renovacion"], datos["tasa_total"]
     if tr:

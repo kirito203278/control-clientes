@@ -26,12 +26,10 @@ def escenario(db, crear_usuario, fabrica):
     return dict(ana=ana, beto=beto, ca=ca, cb=cb, pa=pa, pb=pb)
 
 
-# ------------------------------------------------------------ aislamiento por cm_id
 def test_cm_solo_ve_su_cartera_en_la_lista(api, auth, escenario):
     h = auth(escenario["ana"])
     nombres = [c["nombre"] for c in api.get("/api/clientes", headers=h).json()]
     assert nombres == ["Cliente de Ana"]
-    # intentar filtrar por el cm_id de otro no sirve
     r = api.get(f"/api/clientes?cm_id={escenario['beto'].id}", headers=h).json()
     assert [c["nombre"] for c in r] == ["Cliente de Ana"]
 
@@ -79,13 +77,12 @@ def test_admin_con_escritura_opera_por_un_cm_y_queda_en_bitacora(api, db, auth, 
     assert db.scalars(select(Bitacora).where(Bitacora.accion == "pago_por_admin")).one()
 
 
-# ------------------------------------------------------------------- ficha y credenciales
 def test_alta_cliente_cifra_credenciales_y_ficha_no_expone_password(api, db, auth, crear_usuario):
     ana = crear_usuario("ana.ruiz")
     h = auth(ana)
     r = api.post("/api/clientes", headers=h, json={
         "nombre": "Nuevo", "correo_fb": "nuevo@fb.test", "password_fb": "SuperSecreta1", "telefono": "5511112222",
-        "cm_id": 999,  # un CM no puede escoger dueño
+        "cm_id": 999,
         "paquetes": [{"paquete_id": 1, "tipo_id": 1, "costo": 1500, "fecha_inicio": "2026-10-01"}]})
     assert r.status_code == 201
     c = db.get(Cliente, r.json()["id"])
@@ -126,25 +123,23 @@ def test_reasignar_cliente_solo_admin_a_cm_activo(api, db, auth, escenario, crea
     assert api.post(f"/api/clientes/{cid}/reasignar", headers=adm, json={"cm_id": adm and 99999}).status_code == 422
 
 
-# ------------------------------------------------------------------------- quincenas
 def test_filtro_por_quincena_usa_fecha_de_renovacion_de_algun_paquete_vigente(api, db, auth, crear_usuario, fabrica):
     ana = crear_usuario("ana.ruiz")
     h = auth(ana)
     uno = fabrica.cliente(ana, "Solo 1ra")
-    fabrica.ciclo(uno, dt.date(2026, 10, 15))                        # día 15 = 1ra
+    fabrica.ciclo(uno, dt.date(2026, 10, 15))
     dos = fabrica.cliente(ana, "Solo 2da")
-    fabrica.ciclo(dos, dt.date(2026, 10, 16))                        # día 16 = 2da
+    fabrica.ciclo(dos, dt.date(2026, 10, 16))
     ambos = fabrica.cliente(ana, "En ambas")
     fabrica.ciclo(ambos, dt.date(2026, 10, 5))
     fabrica.ciclo(ambos, dt.date(2026, 10, 31))
     arch = fabrica.cliente(ana, "Archivado")
-    fabrica.ciclo(arch, dt.date(2026, 10, 3), estado="archivado")    # no vigente: no cuenta
+    fabrica.ciclo(arch, dt.date(2026, 10, 3), estado="archivado")
     q1 = {c["nombre"] for c in api.get("/api/clientes?quincena=1", headers=h).json()}
     q2 = {c["nombre"] for c in api.get("/api/clientes?quincena=2", headers=h).json()}
     assert q1 == {"Solo 1ra", "En ambas"} and q2 == {"Solo 2da", "En ambas"}
 
 
-# ------------------------------------------------------------------------------ pagos
 def test_pagado_se_suma_de_pagos_y_restante_con_avance(api, auth, escenario):
     h = auth(escenario["ana"])
     pid = escenario["pa"].id
@@ -161,8 +156,8 @@ def test_pago_invalido(api, auth, escenario):
     pid = escenario["pa"].id
     assert api.post(f"/api/paquetes/{pid}/pagos", headers=h, json={"monto": 0}).status_code == 422
     assert api.post(f"/api/paquetes/{pid}/pagos", headers=h, json={"monto": -5}).status_code == 422
-    assert api.post(f"/api/paquetes/{pid}/pagos", headers=h, json={"monto": 1500.01}).status_code == 422   # excede saldo
-    assert api.post(f"/api/paquetes/{pid}/pagos", headers=h, json={"monto": 10, "fecha": "2026-10-02"}).status_code == 422  # futuro
+    assert api.post(f"/api/paquetes/{pid}/pagos", headers=h, json={"monto": 1500.01}).status_code == 422
+    assert api.post(f"/api/paquetes/{pid}/pagos", headers=h, json={"monto": 10, "fecha": "2026-10-02"}).status_code == 422
 
 
 def test_borrar_pago_solo_el_mismo_dia_del_autor(api, db, auth, escenario):
@@ -177,12 +172,11 @@ def test_borrar_pago_solo_el_mismo_dia_del_autor(api, db, auth, escenario):
     assert api.delete(f"/api/pagos/{antiguo.id}", headers=h).status_code == 403
 
 
-# ------------------------------------------------------------------------ semáforo / estado
 def test_semaforo_y_estado_efectivo(api, auth, fabrica, escenario):
     h, c = auth(escenario["ana"]), escenario["ca"]
     casos = {
         "gris": fabrica.ciclo(c, H + D(20)),
-        "rojo": fabrica.ciclo(c, H - D(1)),                                    # pasó R sin decisión (derivado de la fecha)
+        "rojo": fabrica.ciclo(c, H - D(1)),
         "amarillo": fabrica.ciclo(c, H + D(20), estado="renovado", decision="si", pagos=[(100, H)]),
         "verde": fabrica.ciclo(c, H + D(20), estado="renovado", decision="si", pagos=[(1500, H)]),
     }
@@ -192,7 +186,6 @@ def test_semaforo_y_estado_efectivo(api, auth, fabrica, escenario):
     assert api.get(f"/api/paquetes/{fabrica.ciclo(c, H + D(5)).id}", headers=h).json()["estado_efectivo"] == "activo"
 
 
-# ------------------------------------------------------------------------- recordatorios
 def test_recordatorio_con_wa_me_y_marcado_de_envio(api, db, auth, escenario):
     h = auth(escenario["ana"])
     pid = escenario["pa"].id
@@ -211,7 +204,6 @@ def test_normalizar_telefono():
     assert n("525512345678") == "525512345678" and n("123") is None and n(None) is None
 
 
-# ----------------------------------------------------- fechas: se captura el INICIO, la renovación es automática
 def test_alta_de_paquete_captura_inicio_y_renovacion_es_inicio_mas_30(api, db, auth, crear_usuario):
     ana = crear_usuario("ana.ruiz")
     h = auth(ana)
@@ -219,7 +211,7 @@ def test_alta_de_paquete_captura_inicio_y_renovacion_es_inicio_mas_30(api, db, a
     r = api.post(f"/api/clientes/{cid}/paquetes", headers=h, json={"paquete_id": 3, "tipo_id": 1, "costo": 4500, "fecha_inicio": "2026-10-10"})
     d = api.get(f"/api/paquetes/{r.json()['id']}", headers=h).json()
     assert (d["fecha_inicio"], d["fecha_renovacion"]) == ("2026-10-10", "2026-11-09")
-    cid2 = api.post("/api/clientes", headers=h, json={"nombre": "Otro"}).json()["id"]      # sin inicio: es hoy
+    cid2 = api.post("/api/clientes", headers=h, json={"nombre": "Otro"}).json()["id"]
     r = api.post(f"/api/clientes/{cid2}/paquetes", headers=h, json={"paquete_id": 1, "tipo_id": 1, "costo": 1})
     assert api.get(f"/api/paquetes/{r.json()['id']}", headers=h).json()["fecha_renovacion"] == str(H + D(30))
 
@@ -237,8 +229,8 @@ def test_paquete_tipo_y_costo_solo_cambian_al_renovar_no_editando(api, auth, esc
     h, pid = auth(escenario["ana"]), escenario["pa"].id
     for cuerpo in ({"paquete_id": 3}, {"tipo_id": 2}, {"costo": 1}):
         assert api.patch(f"/api/paquetes/{pid}", headers=h, json=cuerpo).status_code == 403
-    assert api.patch(f"/api/paquetes/{pid}", headers=h, json={"fecha_inicio": "2026-10-02"}).status_code == 200   # corregir el inicio sí
-    adm = auth(crear_usuario("admin.demo", rol="admin"))                       # el admin puede corregir capturas erróneas (bitácora)
+    assert api.patch(f"/api/paquetes/{pid}", headers=h, json={"fecha_inicio": "2026-10-02"}).status_code == 200
+    adm = auth(crear_usuario("admin.demo", rol="admin"))
     assert api.patch(f"/api/paquetes/{pid}", headers=adm, json={"costo": 1600}).status_code == 200
 
 
@@ -246,17 +238,17 @@ def test_cambiar_el_inicio_recalcula_renovacion_y_mueve_al_cliente_de_quincena(a
     ana = crear_usuario("ana.ruiz")
     h = auth(ana)
     c = fabrica.cliente(ana, "Se mueve")
-    p = fabrica.ciclo(c, dt.date(2026, 10, 14))                         # renueva día 14 -> 1ra quincena
-    nombres = lambda q: [x["nombre"] for x in api.get(f"/api/clientes?quincena={q}", headers=h).json()]  # noqa: E731
+    p = fabrica.ciclo(c, dt.date(2026, 10, 14))
+    nombres = lambda q: [x["nombre"] for x in api.get(f"/api/clientes?quincena={q}", headers=h).json()]
     assert nombres(1) == ["Se mueve"] and nombres(2) == []
-    r = api.patch(f"/api/paquetes/{p.id}", headers=h, json={"fecha_inicio": "2026-10-02"})   # renueva el 1 nov -> 1ra
+    r = api.patch(f"/api/paquetes/{p.id}", headers=h, json={"fecha_inicio": "2026-10-02"})
     assert r.json()["fecha_renovacion"] == "2026-11-01" and nombres(1) == ["Se mueve"]
-    r = api.patch(f"/api/paquetes/{p.id}", headers=h, json={"fecha_inicio": "2026-10-10"})   # renueva el 9 nov -> 1ra
-    r = api.patch(f"/api/paquetes/{p.id}", headers=h, json={"fecha_inicio": "2026-10-20"})   # renueva el 19 nov -> 2da
+    r = api.patch(f"/api/paquetes/{p.id}", headers=h, json={"fecha_inicio": "2026-10-10"})
+    r = api.patch(f"/api/paquetes/{p.id}", headers=h, json={"fecha_inicio": "2026-10-20"})
     assert r.json()["fecha_renovacion"] == "2026-11-19" and nombres(1) == [] and nombres(2) == ["Se mueve"]
     assert r.json()["quincena"] == 2
 
 
 def test_la_fecha_de_renovacion_ya_no_se_puede_editar_a_mano(api, auth, escenario):
     r = api.patch(f"/api/paquetes/{escenario['pa'].id}", headers=auth(escenario["ana"]), json={"fecha_renovacion": "2027-01-01"})
-    assert r.status_code == 200 and r.json()["fecha_renovacion"] == str(H + D(10))     # se ignora
+    assert r.status_code == 200 and r.json()["fecha_renovacion"] == str(H + D(10))

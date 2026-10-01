@@ -1,4 +1,3 @@
-"""Renovar / no renovar / reingreso y el tablero "Renovaciones de la quincena"."""
 import datetime as dt
 from decimal import Decimal
 
@@ -61,7 +60,6 @@ def no_renovar(paquete_id: int, datos: NoRenovarIn, db: Session = Depends(get_db
 
 @router.post("/paquetes/{paquete_id}/revertir-decision")
 def revertir(paquete_id: int, db: Session = Depends(get_db), user: Usuario = Depends(require_writer)):
-    """Deshace «no renovará» o «confirmó que renovará» antes de que termine el contrato."""
     p = obtener_paquete(db, user, paquete_id)
     renovacion.revertir_decision(db, user, p)
     db.commit()
@@ -72,9 +70,6 @@ def revertir(paquete_id: int, db: Session = Depends(get_db), user: Usuario = Dep
 @router.post("/paquetes/{paquete_id}/confirmar-renovacion")
 def confirmar_renovacion(paquete_id: int, datos: RenovarIn | None = None, db: Session = Depends(get_db),
                          user: Usuario = Depends(require_writer)):
-    """«Confirmó / va a renovar». Aquí se elige si sigue con el mismo paquete o cambia (paquete, tipo, costo): es el único momento,
-    junto con «Renovó», en que se puede cambiar de paquete. Si ya pagó, se renueva en el momento; si no, queda confirmada.
-    Es una de las salidas de la ventana: no la frena el bloqueo."""
     p = obtener_paquete(db, user, paquete_id)
     datos = datos or RenovarIn()
     nuevo = renovacion.confirmar_renovacion(db, user, p, paquete_id=datos.paquete_id, tipo_id=datos.tipo_id, costo=datos.costo)
@@ -87,7 +82,6 @@ def confirmar_renovacion(paquete_id: int, datos: RenovarIn | None = None, db: Se
 
 @router.get("/bloqueos")
 def bloqueos(db: Session = Depends(get_db), user: Usuario = Depends(get_current_user)):
-    """Paquetes con la ventana de bloqueo activa (contrato terminado sin decisión) dentro de la cartera visible."""
     hoy = hoy_mx()
     return [{**ciclos.paquete_out(p, hoy), "cliente_nombre": p.cliente.nombre, "cm_id": p.cliente.cm_id}
             for p in bloqueo_svc.bloqueos_visibles(db, user, hoy)]
@@ -106,7 +100,6 @@ def reingreso(cliente_id: int, datos: ReingresoIn, db: Session = Depends(get_db)
 
 @router.get("/clientes/{cliente_id}/reingreso-info")
 def reingreso_info(cliente_id: int, db: Session = Depends(get_db), user: Usuario = Depends(get_current_user)):
-    """Lo que necesita la interfaz para mostrar las opciones de reingreso (¿ya pasaron 2 meses?)."""
     from app.config import get_settings
     from app.dates import ahora
     from app.models import ArchivoNoRenovado
@@ -131,8 +124,6 @@ def _tarjeta(p: PaqueteCliente, hoy: dt.date, cms: dict[int, str], desde: dt.dat
 @router.get("/renovaciones/tablero")
 def tablero(anio: int | None = None, mes: int | None = None, quincena: str | None = None, cm_id: int | None = None,
             db: Session = Depends(get_db), user: Usuario = Depends(get_current_user)):
-    """Cuatro columnas. 'Por vencer' y 'Completos' se limitan al periodo; 'Vencidos sin decisión' y
-    'Renovados sin pago' incluyen también lo arrastrado de periodos anteriores (no deben perderse de vista)."""
     hoy = hoy_mx()
     q = quincena or str(quincena_de(hoy))
     if q not in ("1", "2", "ambas"):
