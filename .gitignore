@@ -8,3 +8,4 @@ credenciales*
 seed_credentials.txt
 .venv/
 .pytest_cache/
+.devpg/
