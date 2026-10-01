@@ -192,15 +192,6 @@ def test_semaforo_y_estado_efectivo(api, auth, fabrica, escenario):
     assert api.get(f"/api/paquetes/{fabrica.ciclo(c, H + D(5)).id}", headers=h).json()["estado_efectivo"] == "activo"
 
 
-def test_cliente_con_varios_paquetes_cada_uno_con_su_pago(api, auth, fabrica, escenario):
-    h, c = auth(escenario["ana"]), escenario["ca"]
-    otro = fabrica.ciclo(c, H + D(25), costo=3000, paquete="Élite")
-    api.post(f"/api/paquetes/{otro.id}/pagos", headers=h, json={"monto": 1000})
-    ficha = api.get(f"/api/clientes/{c.id}", headers=h).json()
-    por_id = {p["id"]: p for p in ficha["paquetes"]}
-    assert len(por_id) == 2 and float(por_id[otro.id]["pagado"]) == 1000 and float(por_id[escenario["pa"].id]["pagado"]) == 0
-
-
 # ------------------------------------------------------------------------- recordatorios
 def test_recordatorio_con_wa_me_y_marcado_de_envio(api, db, auth, escenario):
     h = auth(escenario["ana"])
@@ -221,15 +212,34 @@ def test_normalizar_telefono():
 
 
 # ----------------------------------------------------- fechas: se captura el INICIO, la renovación es automática
-def test_alta_de_paquete_captura_inicio_y_renovacion_es_inicio_mas_30(api, db, auth, escenario):
-    h = auth(escenario["ana"])
-    r = api.post(f"/api/clientes/{escenario['ca'].id}/paquetes", headers=h,
-                 json={"paquete_id": 3, "tipo_id": 1, "costo": 4500, "fecha_inicio": "2026-10-10"})
+def test_alta_de_paquete_captura_inicio_y_renovacion_es_inicio_mas_30(api, db, auth, crear_usuario):
+    ana = crear_usuario("ana.ruiz")
+    h = auth(ana)
+    cid = api.post("/api/clientes", headers=h, json={"nombre": "Sin paquete"}).json()["id"]
+    r = api.post(f"/api/clientes/{cid}/paquetes", headers=h, json={"paquete_id": 3, "tipo_id": 1, "costo": 4500, "fecha_inicio": "2026-10-10"})
     d = api.get(f"/api/paquetes/{r.json()['id']}", headers=h).json()
     assert (d["fecha_inicio"], d["fecha_renovacion"]) == ("2026-10-10", "2026-11-09")
-    # si no se manda inicio, es hoy
-    r = api.post(f"/api/clientes/{escenario['ca'].id}/paquetes", headers=h, json={"paquete_id": 1, "tipo_id": 1, "costo": 1})
+    cid2 = api.post("/api/clientes", headers=h, json={"nombre": "Otro"}).json()["id"]      # sin inicio: es hoy
+    r = api.post(f"/api/clientes/{cid2}/paquetes", headers=h, json={"paquete_id": 1, "tipo_id": 1, "costo": 1})
     assert api.get(f"/api/paquetes/{r.json()['id']}", headers=h).json()["fecha_renovacion"] == str(H + D(30))
+
+
+def test_un_cliente_tiene_un_solo_paquete(api, auth, escenario):
+    h = auth(escenario["ana"])
+    r = api.post(f"/api/clientes/{escenario['ca'].id}/paquetes", headers=h, json={"paquete_id": 3, "tipo_id": 1, "costo": 100})
+    assert r.status_code == 409 and "un solo paquete" in r.json()["detail"].lower()
+    dos = [{"paquete_id": 1, "tipo_id": 1, "costo": 1}, {"paquete_id": 2, "tipo_id": 1, "costo": 1}]
+    assert api.post("/api/clientes", headers=h, json={"nombre": "Con dos", "paquetes": dos}).status_code == 422
+    assert api.post("/api/clientes", headers=h, json={"nombre": "Con uno", "paquetes": dos[:1]}).status_code == 201
+
+
+def test_paquete_tipo_y_costo_solo_cambian_al_renovar_no_editando(api, auth, escenario, crear_usuario):
+    h, pid = auth(escenario["ana"]), escenario["pa"].id
+    for cuerpo in ({"paquete_id": 3}, {"tipo_id": 2}, {"costo": 1}):
+        assert api.patch(f"/api/paquetes/{pid}", headers=h, json=cuerpo).status_code == 403
+    assert api.patch(f"/api/paquetes/{pid}", headers=h, json={"fecha_inicio": "2026-10-02"}).status_code == 200   # corregir el inicio sí
+    adm = auth(crear_usuario("admin.demo", rol="admin"))                       # el admin puede corregir capturas erróneas (bitácora)
+    assert api.patch(f"/api/paquetes/{pid}", headers=adm, json={"costo": 1600}).status_code == 200
 
 
 def test_cambiar_el_inicio_recalcula_renovacion_y_mueve_al_cliente_de_quincena(api, auth, crear_usuario, fabrica):

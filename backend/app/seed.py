@@ -120,8 +120,7 @@ def sembrar(db: Session, credenciales_path: Path | None = CREDENCIALES_PATH) -> 
     # ---- Ana
     ciclo(cliente(ana, "Panadería La Espiga"), "Básico", "Normal", 1500, 12)
     mv = cliente(ana, "Dra. Mariana Vélez", obs="Prefiere contacto por WhatsApp por las tardes.")
-    ciclo(mv, "Estándar", "Normal", 2500, 4)                                   # aviso "¿renueva?" hoy (R-4)
-    ciclo(mv, "Campaña", "Campaña", 4000, 20, pagos=[(1000, -3)])              # 2º paquete, otra quincena
+    ciclo(mv, "Estándar", "Normal", 2500, 4, pagos=[(1000, -3)])               # aviso "¿renueva?" hoy (R-4), pagó la mitad
     # Ya renovó (pagó completo): el ciclo se cierra ("renovado") y el siguiente empieza HOY (+30 días) con pagado = 0
     th = cliente(ana, "Taller Hermanos Ríos")
     th_viejo = ciclo(th, "Élite", "Dinamita", 4500, 2, estado="renovado", decision="si",

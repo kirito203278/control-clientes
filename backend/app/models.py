@@ -77,13 +77,16 @@ class PaqueteCliente(Base):
     prorroga_registrada_en: Mapped[dt.date | None] = mapped_column(Date)
     gracia_hasta: Mapped[dt.date | None] = mapped_column(Date)
     confirmado_en: Mapped[dt.date | None] = mapped_column(Date)
+    renovara_paquete_id: Mapped[int | None] = mapped_column(ForeignKey("catalogo_paquetes.id"))
+    renovara_tipo_id: Mapped[int | None] = mapped_column(ForeignKey("catalogo_tipos.id"))
+    renovara_costo: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
     ciclo_anterior_id: Mapped[int | None] = mapped_column(ForeignKey("paquetes_cliente.id"))
     archivado_en: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
     creado_en: Mapped[dt.datetime] = _ts()
 
     cliente: Mapped[Cliente] = relationship(back_populates="paquetes")
-    paquete: Mapped[CatalogoPaquete] = relationship()
-    tipo: Mapped[CatalogoTipo] = relationship()
+    paquete: Mapped[CatalogoPaquete] = relationship(foreign_keys=[paquete_id])
+    tipo: Mapped[CatalogoTipo] = relationship(foreign_keys=[tipo_id])
     pagos: Mapped[list["Pago"]] = relationship(back_populates="paquete_cliente", cascade="all, delete-orphan", passive_deletes=True)
 
     @property

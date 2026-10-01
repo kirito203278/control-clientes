@@ -49,7 +49,7 @@ def test_seed(db, tmp_path):
     assert db.scalar(select(func.count()).select_from(Cliente).where(Cliente.cm_id.is_(None))) == 1
     assert db.scalar(select(func.count()).select_from(ArchivoNoRenovado)) == 4
     multi = db.scalars(select(Cliente).where(Cliente.nombre == "Dra. Mariana Vélez")).one()
-    assert len(multi.paquetes) == 2
+    assert len(multi.paquetes) == 1          # un cliente = un paquete
     ic = db.scalars(select(PaqueteCliente).join(Cliente).where(Cliente.nombre == "Imprenta Central")).one()
     assert ic.restante == 1000 and ic.prorroga_hasta < hoy()      # prórroga vencida con deuda, ya archivado
 

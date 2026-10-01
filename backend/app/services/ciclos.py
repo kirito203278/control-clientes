@@ -133,6 +133,9 @@ def paquete_out(p: PaqueteCliente, hoy: dt.date) -> dict:
         "bloqueado": bloqueado(p, hoy), "opciones_bloqueo": opciones_bloqueo(p, hoy),
         "limite_decision": limite_decision(p) if es_vencido(p, hoy) else None,
         "confirmado_en": p.confirmado_en,
+        "renovara_con": ({"paquete_id": p.renovara_paquete_id or p.paquete_id, "tipo_id": p.renovara_tipo_id or p.tipo_id,
+                          "costo": p.renovara_costo if p.renovara_costo is not None else p.costo}
+                         if p.estado in VIGENTES and p.renovacion_decision == "si" else None),
         "prorroga_hasta": p.prorroga_hasta, "prorroga_registrada_en": p.prorroga_registrada_en,
         "prorroga_dias_restantes": (p.prorroga_hasta - hoy).days if p.prorroga_hasta else None,
         "prorroga_activa": prorroga_activa(p, hoy), "prorroga_vencida": prorroga_vencida(p, hoy),

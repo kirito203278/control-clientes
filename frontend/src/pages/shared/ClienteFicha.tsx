@@ -5,7 +5,7 @@ import { useAuth } from '../../auth/AuthContext'
 import { RecordatorioModal } from '../../components/NotificationBell'
 import { Cargando, CampoPassword, ErrorTexto, Progreso, Semaforo, copiar, useToast } from '../../components/ui'
 import { ESTADO_LABEL, SEMAFORO_LABEL, dinero, diasTexto, fecha, hoyIso, sumarDias } from '../../util'
-import { AgregarPaqueteModal, EditarPaqueteModal, NoRenovarModal, RenovarModal } from './modales'
+import { AgregarPaqueteModal, ConfirmarRenovacionModal, EditarPaqueteModal, NoRenovarModal, RenovarModal } from './modales'
 
 const msg = (e: unknown, def: string) => (e instanceof ApiError ? e.message : def)
 const BADGE_ESTADO: Record<string, string> = { activo: 'badge-neutral', por_vencer: 'badge-yellow', vencido: 'badge-bad', renovado: 'badge-good', archivado: 'badge-neutral', eliminado: 'badge-neutral' }
@@ -49,7 +49,7 @@ export default function ClienteFicha({ clienteId, paqueteInicial, onChanged, onD
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 4, flexWrap: 'wrap' }}>
         <h1 className="page-title" style={{ margin: 0 }}>{ficha.nombre}</h1>
         {enNoRenovados && <span className="badge badge-bad">No renovado</span>}
-        {escribe && !enNoRenovados && <button className="btn btn-secondary btn-sm right" onClick={() => setModal('agregar')}>+ Agregar paquete</button>}
+        {escribe && !enNoRenovados && ficha.paquetes.length === 0 && <button className="btn btn-secondary btn-sm right" onClick={() => setModal('agregar')}>+ Agregar paquete</button>}
       </div>
       {user?.rol === 'admin' && puedeEscribir && <p className="muted" style={{ margin: '0 0 8px', fontSize: 13 }}>Operas por cuenta del CM: tus acciones quedan en la bitácora.</p>}
       {puedeEscribir && ficha.paquetes.filter((p) => p.bloqueado).map((p) => <VentanaDecision key={p.id} p={p} ficha={ficha} avisar={avisar} onHecho={(sel) => recargarTodo(sel)} />)}
@@ -156,9 +156,10 @@ function Paquetes({ ficha, paqueteId, setPaqueteId, puedeEscribir, hayBloqueo, r
   ficha: Ficha; paqueteId: number | null; setPaqueteId: (id: number) => void; puedeEscribir: boolean; hayBloqueo: boolean
   recargar: (sel?: number | null) => Promise<void>; sinPaquetes: boolean; avisar: (t: string) => void; onClienteGone: () => void
 }) {
+  const { user } = useAuth()
   const [det, setDet] = useState<PaqueteDetalle | null>(null)
   const [errorDet, setErrorDet] = useState<string | null>(null)
-  const [modal, setModal] = useState<'renovar' | 'no' | 'editar' | null>(null)
+  const [modal, setModal] = useState<'renovar' | 'no' | 'editar' | 'confirmar' | null>(null)
   const [recordatorio, setRecordatorio] = useState<Recordatorio | null>(null)
 
   const cargarDet = useCallback(async () => {
@@ -171,7 +172,7 @@ function Paquetes({ ficha, paqueteId, setPaqueteId, puedeEscribir, hayBloqueo, r
   const vigente = det ? ficha.paquetes.some((p) => p.id === det.id) : false
   const escribe = puedeEscribir && !hayBloqueo       // un paquete bloqueado del cliente deja solo las salidas
 
-  if (sinPaquetes && !det) return <div className="card" style={{ padding: 20 }}><p className="muted" style={{ margin: 0 }}>Este cliente no tiene paquetes vigentes.</p></div>
+  if (sinPaquetes && !det) return <div className="card" style={{ padding: 20 }}><p className="muted" style={{ margin: 0 }}>Este cliente no tiene paquete vigente (un cliente tiene un solo paquete).</p></div>
   return (
     <div className="card" style={{ padding: 20 }}>
       <div className="field" style={{ maxWidth: 520 }}>
@@ -211,25 +212,23 @@ function Paquetes({ ficha, paqueteId, setPaqueteId, puedeEscribir, hayBloqueo, r
             {det.no_renovara && <span className="badge badge-neutral">Marcado: no renovará</span>}
             {!det.no_renovara && det.renovacion_decision !== 'pendiente' && <span className="badge badge-purple">Decisión: {det.renovacion_decision === 'si' ? 'renovó' : 'no renovó'}</span>}
           </div>
-          {det.prorroga_activa && <div className="callout callout-info">Con la prórroga activa no hay nada que decidir: <strong>en cuanto se pague lo que falta ({dinero(det.restante)}) el paquete se renueva solo</strong> (mismo paquete y costo; el ciclo nuevo empieza ese día). Si no se completa el {fecha(det.prorroga_hasta)}, el cliente pasa a No renovados.
-            <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>Si el cliente quiere cambiar de paquete en esa renovación, no se puede en ese momento: se renueva igual y el cambio se hace en la siguiente renovación.</div></div>}
+          {det.prorroga_activa && <div className="callout callout-info">Con la prórroga activa no hay nada que decidir: <strong>en cuanto se pague lo que falta ({dinero(det.restante)}) el paquete se renueva solo</strong> (con el paquete que se eligió al confirmar). Si no se completa el {fecha(det.prorroga_hasta)}, el cliente pasa a No renovados.
+            <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>El nuevo contrato <strong>conserva la misma fecha de renovación</strong> ({fecha(det.fecha_renovacion)}); no se recorre al día en que termine de pagar.</div></div>}
           {vigente && det.estado_efectivo === 'por_vencer' && <div className="callout callout-warn">Este paquete renueva pronto: pregúntale al cliente si renueva.</div>}
           {det.no_renovara && (
             <div className="callout callout-info">Se archivará solo al terminar su contrato ({fecha(det.fecha_renovacion)} a las 11:59 pm) y, si es su último paquete, el cliente pasará a «No renovados».
               {escribe && <button className="btn btn-ghost btn-sm" style={{ marginLeft: 8 }} onClick={async () => { try { await api.post(`/paquetes/${det.id}/revertir-decision`); await cambio(); avisar('Marca deshecha') } catch (e) { avisar(msg(e, 'No se pudo deshacer')) } }}>Deshacer</button>}</div>)}
           {det.confirmo_renovacion && !det.prorroga_activa && (
             <div className="callout callout-warn">
-              <strong>Confirmó que renovará</strong> el {fecha(det.confirmado_en)}: ese día es el inicio del nuevo contrato.{det.restante > 0 ? <> Aún debe {dinero(det.restante)}; en cuanto pague completo el paquete se renueva solo (mismo paquete y costo).
+              <strong>Confirmó que renovará</strong> el {fecha(det.confirmado_en)}: ese día es el inicio del nuevo contrato.{det.restante > 0 ? <> Aún debe {dinero(det.restante)}; en cuanto pague completo el paquete se renueva solo.
                 Si no ha pagado al terminar el día {det.gracia_hasta ? fecha(det.gracia_hasta) : fecha(det.fecha_renovacion)} a las 11:59 pm, se bloquea y se te preguntará por la prórroga (sin tolerancia).</> : ''}
-              <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>Si el cliente quiere cambiar de paquete en esa renovación, no se puede en ese momento: se renueva igual y el cambio se hace en la siguiente renovación.</div>
+              <div style={{ fontSize: 13, marginTop: 4 }}>Renovará con: {det.renovara_con && (det.renovara_con.paquete_id !== det.paquete_id || det.renovara_con.tipo_id !== det.tipo_id || Number(det.renovara_con.costo) !== Number(det.costo))
+                ? <><strong>otro paquete ({dinero(det.renovara_con.costo)})</strong> — se aplica al concretarse la renovación</> : <strong>el mismo paquete ({dinero(det.costo)})</strong>}.</div>
               {escribe && det.estado === 'activo' && !det.bloqueado && <button className="btn btn-ghost btn-sm" style={{ marginTop: 4 }} onClick={async () => { try { await api.post(`/paquetes/${det.id}/revertir-decision`); await cambio(); avisar('Confirmación deshecha') } catch (e) { avisar(msg(e, 'No se pudo deshacer')) } }}>Deshacer confirmación</button>}
             </div>)}
           {escribe && vigente && !det.no_renovara && !det.prorroga_activa && !det.bloqueado && (
             <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
-              {!det.confirmo_renovacion && <button className="btn btn-primary" onClick={async () => {
-                try { const r = await api.post<{ renovado_automaticamente: number | null }>(`/paquetes/${det.id}/confirmar-renovacion`)
-                  await cambio(r.renovado_automaticamente); avisar(r.renovado_automaticamente ? 'Pagado y confirmado: se renovó (ciclo nuevo desde hoy)' : 'Confirmado: falta el pago para renovar') }
-                catch (e) { avisar(msg(e, 'No se pudo confirmar')) } }}>Confirmó que renovará</button>}
+              {!det.confirmo_renovacion && <button className="btn btn-primary" onClick={() => setModal('confirmar')}>Confirmó que renovará</button>}
               <button className="btn btn-secondary" onClick={() => setModal('renovar')}>Renovó (ya pagó)</button>
               <button className="btn btn-secondary" onClick={() => setModal('no')}>No renovará</button>
             </div>)}
@@ -248,9 +247,10 @@ function Paquetes({ ficha, paqueteId, setPaqueteId, puedeEscribir, hayBloqueo, r
             </>)}
           <p className="muted" style={{ fontSize: 12, marginTop: 14 }}>Semáforo: {SEMAFORO_LABEL[det.semaforo]}. Ciclo del {fecha(det.fecha_inicio)} al {fecha(det.fecha_renovacion)}.</p>
 
+          {modal === 'confirmar' && <ConfirmarRenovacionModal p={det as Paquete} onClose={() => setModal(null)} onHecho={(r) => { setModal(null); cambio(r.renovado_automaticamente); avisar(r.renovado_automaticamente ? 'Pagado y confirmado: se renovó' : 'Confirmado: falta el pago para renovar') }} />}
           {modal === 'renovar' && <RenovarModal p={det as Paquete} onClose={() => setModal(null)} onHecho={(id) => { setModal(null); cambio(id); avisar('Renovado: se abrió un ciclo nuevo') }} />}
-          {modal === 'editar' && <EditarPaqueteModal p={det as Paquete} onClose={() => setModal(null)} onHecho={() => { setModal(null); cambio(); avisar('Paquete actualizado') }} />}
-          {modal === 'no' && <NoRenovarModal p={det as Paquete} esUltimo={ficha.paquetes.length === 1} nombreCliente={ficha.nombre} onClose={() => setModal(null)}
+          {modal === 'editar' && <EditarPaqueteModal p={det as Paquete} esAdmin={user?.rol === 'admin'} onClose={() => setModal(null)} onHecho={() => { setModal(null); cambio(); avisar('Paquete actualizado') }} />}
+          {modal === 'no' && <NoRenovarModal p={det as Paquete} nombreCliente={ficha.nombre} onClose={() => setModal(null)}
             onHecho={(r) => { setModal(null); if (r.cliente_eliminado) onClienteGone(); else { cambio(); avisar(r.cliente_a_no_renovados ? 'El cliente pasó a No renovados' : 'Paquete actualizado') } }} />}
           {recordatorio && <RecordatorioModal r={recordatorio} onClose={() => setRecordatorio(null)} />}
         </>
@@ -305,7 +305,7 @@ function Pagos({ det, puedeEscribir, alCambiar, avisar }: { det: PaqueteDetalle;
 /* ----------------------------------------------------------------------------- bloqueo y prórroga */
 /** Ventana de decisión DENTRO del cliente: no bloquea el resto del sistema, solo a este cliente. */
 function VentanaDecision({ p, ficha, onHecho, avisar }: { p: Paquete; ficha: Ficha; onHecho: (sel?: number | null) => void; avisar: (t: string) => void }) {
-  const [modal, setModal] = useState<'renovar' | 'no' | null>(null)
+  const [modal, setModal] = useState<'renovar' | 'no' | 'va' | null>(null)
   const [trabajando, setTrabajando] = useState(false)
   const op = p.opciones_bloqueo
   const confirmado = p.renovacion_decision === 'si'
@@ -314,11 +314,6 @@ function VentanaDecision({ p, ficha, onHecho, avisar }: { p: Paquete; ficha: Fic
     setTrabajando(true)
     try { await f() } catch (e) { avisar(msg(e, 'No se pudo completar')) } finally { setTrabajando(false) }
   }
-  const vaARenovar = () => llamar(async () => {
-    const r = await api.post<{ renovado_automaticamente: number | null }>(`/paquetes/${p.id}/confirmar-renovacion`)
-    avisar(r.renovado_automaticamente ? 'Renovado: el ciclo nuevo empieza hoy' : 'Confirmado: se habilitan las funciones de este cliente')
-    onHecho(r.renovado_automaticamente)
-  })
   const prorroga = () => llamar(async () => { await api.post(`/paquetes/${p.id}/prorroga`); avisar('Prórroga activada: 5 días naturales'); onHecho() })
 
   return (
@@ -335,15 +330,16 @@ function VentanaDecision({ p, ficha, onHecho, avisar }: { p: Paquete; ficha: Fic
         {p.limite_decision && <> Si no decides, el {fecha(sumarDias(p.limite_decision, 1))} pasa automáticamente a No renovados.</>}
       </p>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        {op.includes('va_a_renovar') && <button className="btn btn-primary" disabled={trabajando} onClick={vaARenovar}>Sí, va a renovar</button>}
+        {op.includes('va_a_renovar') && <button className="btn btn-primary" disabled={trabajando} onClick={() => setModal('va')}>Sí, va a renovar</button>}
         {op.includes('renovo') && <button className="btn btn-primary" disabled={trabajando} onClick={() => setModal('renovar')}>Renovó</button>}
         {op.includes('prorroga') && <button className="btn btn-primary" disabled={trabajando} onClick={prorroga}>Solicitó prórroga (5 días)</button>}
         {op.includes('no_renovo') && <button className="btn btn-secondary" disabled={trabajando} onClick={() => setModal('no')}>No renovó</button>}
       </div>
       {op.includes('va_a_renovar') && <p className="muted" style={{ fontSize: 12, margin: '10px 0 0' }}>«Sí, va a renovar» marca <strong>hoy ({fecha(hoyIso())})</strong> como el inicio del nuevo contrato y habilita las funciones de este cliente el resto del día. No hay tolerancia de pago: a las 11:59 pm, si no ha pagado, se te preguntará por la prórroga o si no renovó.</p>}
       {op.includes('prorroga') && <p className="muted" style={{ fontSize: 12, margin: '10px 0 0' }}>La prórroga dura 5 días naturales desde hoy (la fecha es automática). En ese plazo se acepta el pago parcial o el resto y, al completarlo, el paquete se renueva solo.</p>}
+      {modal === 'va' && <ConfirmarRenovacionModal p={p} onClose={() => setModal(null)} onHecho={(r) => { setModal(null); avisar(r.renovado_automaticamente ? 'Renovado' : 'Confirmado: se habilitan las funciones de este cliente'); onHecho(r.renovado_automaticamente) }} />}
       {modal === 'renovar' && <RenovarModal p={p} onClose={() => setModal(null)} onHecho={(id) => { setModal(null); avisar('Renovado: se abrió un ciclo nuevo'); onHecho(id) }} />}
-      {modal === 'no' && <NoRenovarModal p={p} esUltimo={ficha.paquetes.length === 1} nombreCliente={ficha.nombre} onClose={() => setModal(null)}
+      {modal === 'no' && <NoRenovarModal p={p} nombreCliente={ficha.nombre} onClose={() => setModal(null)}
         onHecho={() => { setModal(null); avisar('Pasó a No renovados'); onHecho() }} />}
     </div>
   )

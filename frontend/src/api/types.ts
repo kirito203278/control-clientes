@@ -16,6 +16,7 @@ export interface Paquete {
   prorroga_activa: boolean; prorroga_vencida: boolean
   bloqueado: boolean; opciones_bloqueo: ('renovo' | 'va_a_renovar' | 'no_renovo' | 'prorroga')[]; limite_decision: string | null
   no_renovara: boolean; confirmo_renovacion: boolean; gracia_hasta: string | null; gracia_activa: boolean; confirmado_en: string | null
+  renovara_con: { paquete_id: number; tipo_id: number; costo: number } | null
   ciclo_anterior_id: number | null; archivado_en: string | null
 }
 export interface Pago {

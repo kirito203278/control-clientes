@@ -124,6 +124,8 @@ def crear(datos: ClienteIn, db: Session = Depends(get_db), user: Usuario = Depen
             cm = db.get(Usuario, cm_id)
             if cm is None or cm.rol != "cm" or not cm.activo:
                 raise HTTPException(422, "El CM indicado no existe o está dado de baja")
+    if len(datos.paquetes) > 1:
+        raise HTTPException(422, "Un cliente tiene un solo paquete")
     c = Cliente(cm_id=cm_id, nombre=datos.nombre.strip(), correo_contacto=datos.correo_contacto,
                 telefono=datos.telefono, observaciones=datos.observaciones,
                 correo_fb_enc=encrypt_value(datos.correo_fb) if datos.correo_fb else None,

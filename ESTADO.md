@@ -105,3 +105,11 @@ CICLO_DIAS=30, TOLERANCIA_DIAS=3, PRORROGA_MAX_DIAS=15, AVISO_DIAS_ANTES_RENOVAC
 - **«No renovó» tiene dos alcances:** solo este paquete, o **todo el cliente** (se archivan todos sus paquetes vigentes y pasa a No renovados). Antes de que termine el contrato solo existe «no renovará» por paquete (programado).
 - La prórroga solo se ofrece a quien ya confirmó que renovará y no ha pagado (una vez, 5 días).
 - BD: `gracia_hasta` (004) y `confirmado_en` (005).
+
+## Ajustes finales (reemplazan a lo anterior donde choquen)
+- **Un cliente tiene UN solo paquete** (no existen clientes con 2). La API rechaza un segundo paquete (409) y un alta con 2 (422). Se agrega paquete solo a un cliente sin paquete vigente. Desaparece «no renovó por paquete / por cliente»: no renovar el paquete = el cliente a No renovados.
+  (Se aplica en la aplicación, no con índice único en BD, para que la migración no falle en bases con datos viejos.)
+- **Prórroga conserva la fecha de renovación original:** si el ciclo usó prórroga, el nuevo contrato empieza en la fecha de renovación original (R) y renueva R+30; no se recorre al día en que termine de pagar. Sin prórroga, el inicio es el día de la confirmación (o el día de «Renovó»).
+- **Cambiar de paquete solo al renovar:** se elige al confirmar «va a renovar» (mismo paquete u otro con su tipo y costo; se guarda como plan y se aplica al concretarse la renovación) o en «Renovó». Fuera de la renovación NO se editan paquete/tipo/costo: un CM solo corrige la fecha de inicio; un admin con escritura puede corregir capturas erróneas (bitácora).
+- Quien no paga (venció la prórroga) o no pidió prórroga pasa a No renovados: sin cambios.
+- BD: migración 006 (`renovara_paquete_id`, `renovara_tipo_id`, `renovara_costo`).

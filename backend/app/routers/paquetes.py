@@ -50,6 +50,8 @@ def agregar_paquete(cliente_id: int, datos: PaqueteNuevo, db: Session = Depends(
     c = obtener_cliente(db, user, cliente_id)
     if c.estado != "activo":
         raise HTTPException(409, "El cliente está en No renovados: usa el reingreso")
+    if renovacion.vigentes_del_cliente(db, c.id) > 0:
+        raise HTTPException(409, "Un cliente tiene un solo paquete. Para cambiar de paquete, hazlo al renovar.")
     bloqueo.exigir_libre(db, c.id, hoy_mx())
     p = crear_ciclo(db, c, datos)
     bitacora.registrar_si_admin(db, user, "alta_paquete_admin", {"cliente_id": c.id, "paquete_id": p.id})
@@ -89,6 +91,8 @@ def editar_paquete(paquete_id: int, datos: PaquetePatch, db: Session = Depends(g
     _editable(p)
     bloqueo.exigir_libre(db, p.cliente_id, hoy_mx())
     campos = datos.model_dump(exclude_unset=True, exclude_none=True)
+    if user.rol != "admin" and {"paquete_id", "tipo_id", "costo"} & set(campos):
+        raise HTTPException(403, "El paquete, el tipo y el costo solo cambian al renovar (al confirmar que renueva o al registrar la renovación)")
     if "paquete_id" in campos or "tipo_id" in campos:
         validar_catalogos(db, campos.get("paquete_id", p.paquete_id), campos.get("tipo_id", p.tipo_id))
     antes = {k: str(getattr(p, k)) for k in campos}
