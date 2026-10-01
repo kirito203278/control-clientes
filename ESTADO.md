@@ -4,7 +4,7 @@ Referencia de solo lectura: `~/Documentos/referencia/sistema-campanas-master` (n
 
 ## Fases
 - [x] Fase 0 — Diseño: `docs/FASE0_esquema.sql`, `docs/FASE0_endpoints.md`. **Cerrada**: todas las preguntas respondidas.
-- [ ] Fase 1 — BD, migraciones, seed, Docker, `.env`
+- [x] Fase 1 — BD, migraciones, seed, Docker, `.env` (ver COMO_EJECUTAR.md). Pendiente del usuario: probar con Docker real (aquí no había Docker; se probó con Postgres 18 embebido).
 - [ ] Fase 2 — Auth, roles, equipo, reasignación/baja
 - [ ] Fase 3 — Panel CM
 - [ ] Fase 4 — Renovación, No renovados, notificaciones, jobs
@@ -34,3 +34,12 @@ Referencia de solo lectura: `~/Documentos/referencia/sistema-campanas-master` (n
 
 ## Constantes (config, no hardcodeadas)
 CICLO_DIAS=30, TOLERANCIA_DIAS=3, PRORROGA_MAX_DIAS=15, AVISO_DIAS_ANTES_RENOVACION=4, PURGA_MESES=3, REINGRESO_MESES=2
+
+## Fase 1 — lo construido
+- `backend/app/migrations/sql/`: `001_init.sql` (esquema + trigger `actualizado_en`), `002_catalogos_base.sql`. Runner idempotente con `schema_migrations`.
+- Modelos ORM (`app/models.py`), config sin secretos por defecto (`app/config.py`), AES-GCM, bcrypt y contraseñas de 18 caracteres.
+- `app/seed.py`: 5 usuarios (admin.demo, lectura.demo, ana.ruiz, beto.luna, carla.soto) y 15 clientes ficticios con fechas relativas a hoy que cubren: por vencer, vencido, amarillo/verde, prórroga por vencer, prórroga vencida con deuda, historial de renovación (Estándar→Élite), multi-paquete, por reasignar y No renovados de 20/70/95 días.
+- `scripts/generar_env.py` crea `.env` (600) con claves nuevas. `docker-compose.yml`: db (127.0.0.1:5434), backend (:8000), adminer (:8081).
+- 21 pruebas (CHECK de prórroga 15 días, estados, pagos, derivación de `pagado`, dedupe de notificaciones, CASCADE de No renovados, cifrado, seed).
+- Dockerfile de una etapa; se vuelve de dos etapas en la Fase 7.
+- Python local de desarrollo: 3.14; imagen Docker: 3.12 (requirements con `>=`).
