@@ -5,7 +5,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
 from app.jobs.scheduler import start_scheduler, stop_scheduler
-from app.routers import (admin, auth, catalogos, clientes, jobs, notificaciones, paquetes, renovacion, usuarios)
+from app.routers import (admin, auth, catalogos, clientes, ingresos, jobs, notificaciones, paquetes, renovacion,
+                         reportes, usuarios)
 
 settings = get_settings()
 
@@ -29,7 +30,7 @@ app.add_middleware(
 )
 
 for r in (auth.router, usuarios.router, catalogos.router, admin.router, clientes.router, paquetes.router,
-          renovacion.router, notificaciones.router, jobs.router):
+          renovacion.router, notificaciones.router, jobs.router, ingresos.router, reportes.router):
     app.include_router(r)
 
 

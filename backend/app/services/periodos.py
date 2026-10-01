@@ -21,8 +21,8 @@ class Periodo:
     quincena: str          # "1" | "2" | "ambas"
     desde: dt.date
     hasta: dt.date
-    corte: dt.date         # lo cobrado cuenta solo hasta aquí
-    cerrado: bool          # True si ya terminó (hoy > hasta)
+    corte: dt.date         # fecha de corte = hoy: lo cobrado cuenta solo hasta aquí (nunca hay pagos futuros)
+    cerrado: bool          # True si ya terminó (hoy > hasta); un periodo cerrado se reporta completo
 
     @property
     def etiqueta(self) -> str:
@@ -47,7 +47,7 @@ def construir_periodo(anio: int, mes: int, quincena: str, hoy: dt.date) -> Perio
     desde, hasta = {"1": (1, 15), "2": (16, fin_mes), "ambas": (1, fin_mes)}[quincena]
     desde_f, hasta_f = dt.date(anio, mes, desde), dt.date(anio, mes, hasta)
     cerrado = hoy > hasta_f
-    return Periodo(anio, mes, quincena, desde_f, hasta_f, hasta_f if cerrado else hoy, cerrado)
+    return Periodo(anio, mes, quincena, desde_f, hasta_f, hoy, cerrado)
 
 
 def sumar_dias(fecha: dt.date, dias: int) -> dt.date:

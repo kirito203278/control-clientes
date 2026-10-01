@@ -8,8 +8,8 @@ Referencia de solo lectura: `~/Documentos/referencia/sistema-campanas-master` (n
 - [x] Fase 2 — Auth, roles, equipo, baja de CM con migración (la reasignación de clientes sueltos va junto al router de clientes, Fase 3)
 - [~] Fase 3 — Panel CM (backend listo y probado; falta frontend)
 - [~] Fase 4 — Renovación, No renovados, notificaciones, jobs (backend listo y probado; falta frontend)
-- [ ] Fase 5 — Ingresos, recordatorios WhatsApp (SIN importador: la cartera arranca de cero)
-- [ ] Fase 6 — Reportes PDF/Excel + pruebas
+- [~] Fase 5 — Ingresos (backend listo y probado; falta pantalla), recordatorios WhatsApp (backend listo; SIN importador: la cartera arranca de cero)
+- [~] Fase 6 — Reportes PDF/Excel + pruebas (backend listo y probado, incl. recálculo de fórmulas con LibreOffice; falta pantalla)
 - [ ] Fase 7 — Producción (Render + Neon, cron-job.org, UptimeRobot)
 
 ## Decisiones (propuestas, pendientes de confirmar salvo indicación)
@@ -43,3 +43,12 @@ CICLO_DIAS=30, TOLERANCIA_DIAS=3, PRORROGA_MAX_DIAS=15, AVISO_DIAS_ANTES_RENOVAC
 - 21 pruebas (CHECK de prórroga 15 días, estados, pagos, derivación de `pagado`, dedupe de notificaciones, CASCADE de No renovados, cifrado, seed).
 - Dockerfile de una etapa; se vuelve de dos etapas en la Fase 7.
 - Python local de desarrollo: 3.14; imagen Docker: 3.12 (requirements con `>=`).
+
+## Decisiones de Ingresos y Reportes (Fases 5-6)
+- Un solo generador (`services/reporte_datos.py`) alimenta la pantalla Ingresos, el JSON, el PDF y el Excel.
+- Proyección = costo de ciclos con fecha de renovación en el periodo, excluyendo archivados y eliminados. Cobrado = pagos de esos ciclos con fecha <= corte (hoy). Un periodo cerrado se reporta completo (los pagos tardíos de un periodo viejo SÍ cuentan: el reporte es "cuánto de lo proyectado se ha cobrado a hoy").
+- Periodo en curso (hoy <= último día) = "Periodo parcial, corte al hoy"; la proyección es la del periodo completo. 2da quincena termina el último día real (28/29/30/31).
+- Secciones 4 (Prórrogas) y 5 (Pendientes) NO se limitan al periodo: son listas de trabajo con todo lo vigente a la fecha de corte.
+- Tasa de renovación = renovados / (ciclos que llegaron a su fecha en el periodo, incluidos archivados/eliminados).
+- Reportes: CM obtiene el mismo generador filtrado por su cartera (el `cm_id` de la petición se ignora para un CM). Admin de solo lectura puede descargar.
+- Excel: hoja por sección; totales y derivados (restante, %, días, SUMIFS por CM) son fórmulas reales, verificadas recalculando con LibreOffice.
