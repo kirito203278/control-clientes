@@ -1,3 +1,5 @@
+# Todo en uno: Postgres + app (API y interfaz en http://localhost:8000) + Adminer.
+# Para editar código con recarga en vivo:  docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
 services:
   db:
     image: postgres:16-alpine
@@ -18,20 +20,19 @@ services:
       retries: 10
 
   backend:
-    build: ./backend
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
     restart: unless-stopped
     env_file: .env
     environment:
       DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
-      RELOAD: "true"
       PORT: "8000"
     depends_on:
       db:
         condition: service_healthy
     ports:
       - "127.0.0.1:${APP_PORT:-8000}:8000"
-    volumes:
-      - ./backend:/app
 
   adminer:
     image: adminer:latest

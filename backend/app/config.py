@@ -5,6 +5,10 @@ valor por defecto: sin .env la app no arranca, en vez de arrancar insegura.
 """
 from functools import lru_cache
 
+import base64
+import binascii
+
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -22,6 +26,7 @@ class Settings(BaseSettings):
     tz: str = "America/Mexico_City"
     agencia_nombre: str = "INNquietus"
     scheduler_enabled: bool = True
+    enable_docs: bool = False   # /docs (OpenAPI) solo en desarrollo
 
     # Reglas de negocio parametrizables (ver ESTADO.md)
     ciclo_dias: int = 30                  # duración de un ciclo
@@ -31,6 +36,40 @@ class Settings(BaseSettings):
     aviso_prorroga_dias: int = 3          # aviso antes de vencer una prórroga
     purga_meses: int = 3                  # permanencia máxima en "No renovados"
     reingreso_meses: int = 2              # <2 meses: puede continuar; >=2: paquete nuevo y se borra historial
+
+    @field_validator("database_url")
+    @classmethod
+    def _normalizar_url_bd(cls, v: str) -> str:
+        """Neon/Render entregan postgres:// o postgresql://; SQLAlchemy necesita el driver explícito."""
+        for prefijo in ("postgres://", "postgresql://"):
+            if v.startswith(prefijo):
+                return "postgresql+psycopg2://" + v[len(prefijo):]
+        return v
+
+    @field_validator("jwt_secret")
+    @classmethod
+    def _jwt_fuerte(cls, v: str) -> str:
+        if len(v) < 32 or v.startswith("__"):
+            raise ValueError("JWT_SECRET debe tener al menos 32 caracteres (genera uno con scripts/generar_env.py)")
+        return v
+
+    @field_validator("jobs_secret")
+    @classmethod
+    def _jobs_fuerte(cls, v: str) -> str:
+        if len(v) < 16 or v.startswith("__"):
+            raise ValueError("JOBS_SECRET debe tener al menos 16 caracteres (genera uno con scripts/generar_env.py)")
+        return v
+
+    @field_validator("aes_key_b64")
+    @classmethod
+    def _aes_valida(cls, v: str) -> str:
+        try:
+            ok = len(base64.b64decode(v, validate=True)) == 32
+        except (binascii.Error, ValueError):
+            ok = False
+        if not ok:
+            raise ValueError("AES_KEY_B64 debe ser una clave de 32 bytes en base64 (genera una con scripts/generar_env.py)")
+        return v
 
     @property
     def cors_origins_list(self) -> list[str]:

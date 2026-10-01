@@ -1,0 +1,24 @@
+# Blueprint de Render (plan gratuito). Ver docs/DESPLIEGUE.md.
+services:
+  - type: web
+    name: control-clientes
+    runtime: docker
+    plan: free
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: .
+    healthCheckPath: /api/health
+    envVars:
+      - key: DATABASE_URL        # cadena de conexión de Neon (con ?sslmode=require)
+        sync: false
+      - key: AES_KEY_B64         # python3 -c "import secrets,base64;print(base64.b64encode(secrets.token_bytes(32)).decode())"
+        sync: false              # ¡guarda una copia! sin esta clave no se pueden descifrar las contraseñas de Facebook
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JOBS_SECRET         # lo usarás en cron-job.org (header X-Jobs-Secret)
+        generateValue: true
+      - key: CORS_ORIGINS        # https://TU-APP.onrender.com
+        sync: false
+      - key: TZ
+        value: America/Mexico_City
+      - key: SEED_ON_START
+        value: "false"

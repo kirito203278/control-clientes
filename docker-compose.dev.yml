@@ -1,0 +1,7 @@
+# Desarrollo: monta el código y recarga en vivo. La interfaz se sirve con `npm run dev` (puerto 5173, proxy a :8000).
+services:
+  backend:
+    environment:
+      RELOAD: "true"
+    volumes:
+      - ./backend/app:/app/app

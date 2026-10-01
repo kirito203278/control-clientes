@@ -21,7 +21,9 @@ async def lifespan(_: FastAPI):
     stop_scheduler()
 
 
-app = FastAPI(title="INNquietus · Control de clientes", lifespan=lifespan)
+app = FastAPI(title="INNquietus · Control de clientes", lifespan=lifespan,
+              docs_url="/docs" if settings.enable_docs else None, redoc_url=None,
+              openapi_url="/openapi.json" if settings.enable_docs else None)
 
 app.add_middleware(
     CORSMiddleware,
@@ -30,6 +32,17 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.middleware("http")
+async def cabeceras_de_seguridad(request, call_next):
+    resp = await call_next(request)
+    resp.headers.setdefault("X-Content-Type-Options", "nosniff")
+    resp.headers.setdefault("X-Frame-Options", "DENY")
+    resp.headers.setdefault("Referrer-Policy", "same-origin")
+    if request.url.path.startswith("/api/"):
+        resp.headers.setdefault("Cache-Control", "no-store")           # datos de clientes: nada en cachés
+    return resp
+
 
 for r in (auth.router, usuarios.router, catalogos.router, admin.router, clientes.router, paquetes.router,
           renovacion.router, notificaciones.router, jobs.router, ingresos.router, reportes.router):
