@@ -2,8 +2,8 @@
 
 Las fechas son relativas a "hoy" para que cada escenario (por vencer, vencido,
 prórroga por vencer, prórroga vencida, No renovados antiguos...) siga vigente
-cuando se vuelva a sembrar. Las contraseñas se generan al azar y se escriben
-SOLO en backend/seed_credentials.txt (ignorado por git), nunca en consola.
+cuando se vuelva a sembrar. Las contraseñas son de EJEMPLO (fijas, para pruebas); también quedan en
+backend/seed_credentials.txt (ignorado por git). En producción NO se siembra: el admin crea a cada usuario con su contraseña.
 
     python -m app.seed            # falla si ya hay usuarios
     FORCE_SEED=true python -m app.seed   # (solo dev) vacía y vuelve a sembrar
@@ -24,17 +24,17 @@ from app.database import get_sessionmaker
 from app.models import (ArchivoNoRenovado, CatalogoPaquete, CatalogoTipo, Cliente, PaqueteCliente, Pago,
                         Renovacion, Usuario)
 from app.security.crypto import encrypt_value
-from app.security.passwords import generate_secure_password, hash_password
+from app.security.passwords import hash_password
 
 CREDENCIALES_PATH = Path(__file__).resolve().parent.parent / "seed_credentials.txt"
 
 USUARIOS = [
-    # (nombre, username, rol, solo_lectura)
-    ("Admin Demo", "admin.demo", "admin", False),
-    ("Lectura Demo", "lectura.demo", "admin", True),
-    ("Ana Ruiz", "ana.ruiz", "cm", False),
-    ("Beto Luna", "beto.luna", "cm", False),
-    ("Carla Soto", "carla.soto", "cm", False),
+    # (nombre, username, rol, solo_lectura, contraseña de EJEMPLO — solo para pruebas; en producción las crea el admin)
+    ("Admin Demo", "admin.demo", "admin", False, "Admin-Demo-2026"),
+    ("Lectura Demo", "lectura.demo", "admin", True, "Lectura-Demo-2026"),
+    ("Ana Ruiz", "ana.ruiz", "cm", False, "Ana-Demo-2026"),
+    ("Beto Luna", "beto.luna", "cm", False, "Beto-Demo-2026"),
+    ("Carla Soto", "carla.soto", "cm", False, "Carla-Demo-2026"),
 ]
 
 
@@ -62,8 +62,7 @@ def sembrar(db: Session, credenciales_path: Path | None = CREDENCIALES_PATH) -> 
 
     # ---- usuarios
     lineas, users = [], {}
-    for nombre, username, rol, ro in USUARIOS:
-        pwd = generate_secure_password()
+    for nombre, username, rol, ro, pwd in USUARIOS:
         u = Usuario(nombre=nombre, username=username, password_hash=hash_password(pwd),
                     rol=rol, solo_lectura=ro, primer_ingreso=False)
         db.add(u)

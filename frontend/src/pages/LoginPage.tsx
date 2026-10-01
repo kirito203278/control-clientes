@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { ApiError } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
 import Logo from '../components/Logo'
+import { CampoPassword } from '../components/ui'
 
 export default function LoginPage() {
   const { login } = useAuth()
@@ -30,7 +31,7 @@ export default function LoginPage() {
         <div className="field"><label htmlFor="username">Usuario</label>
           <input id="username" type="text" autoFocus autoComplete="username" value={username} onChange={(e) => setUsername(e.target.value)} required /></div>
         <div className="field"><label htmlFor="password">Contraseña</label>
-          <input id="password" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required /></div>
+          <CampoPassword id="password" autoComplete="current-password" value={password} onChange={setPassword} /></div>
         {error && <p className="error-text" style={{ marginBottom: 14 }}>{error}</p>}
         <button type="submit" className="btn btn-primary" style={{ width: '100%', justifyContent: 'center' }} disabled={cargando}>
           {cargando ? <span className="spinner" /> : 'Entrar'}

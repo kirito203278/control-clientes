@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api, ApiError } from '../../api/client'
 import type { CatalogoItem, Paquete } from '../../api/types'
-import { ErrorTexto, Modal } from '../../components/ui'
+import { CampoPassword, ErrorTexto, Modal } from '../../components/ui'
 import { dinero, fecha, hoyIso, sumarDias } from '../../util'
 
 export function useCatalogos() {
@@ -227,7 +227,7 @@ export function AgregarClienteModal({ onClose, onHecho, cms }: { onClose: () => 
         <div className="field"><label>Nombre del cliente *</label><input type="text" value={d.nombre} onChange={set('nombre')} autoFocus /></div>
         <div className="field"><label>Teléfono personal</label><input type="text" value={d.telefono} onChange={set('telefono')} placeholder="10 dígitos" /></div>
         <div className="field"><label>Correo de Facebook</label><input type="text" value={d.correo_fb} onChange={set('correo_fb')} /></div>
-        <div className="field"><label>Contraseña de Facebook</label><input type="password" autoComplete="new-password" value={d.password_fb} onChange={set('password_fb')} /></div>
+        <div className="field"><label>Contraseña de Facebook</label><CampoPassword value={d.password_fb} onChange={(v) => setD({ ...d, password_fb: v })} /></div>
         <div className="field"><label>Correo de contacto</label><input type="text" value={d.correo_contacto} onChange={set('correo_contacto')} /></div>
         {cms && <div className="field"><label>CM responsable</label>
           <select value={cmId} onChange={(e) => setCmId(e.target.value)}><option value="">Por reasignar</option>{cms.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}</select></div>}

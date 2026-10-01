@@ -31,6 +31,30 @@ export function Progreso({ pct }: { pct: number }) {
   return <div className="progress" role="progressbar" aria-valuenow={Math.round(pct)} aria-valuemin={0} aria-valuemax={100}><div style={{ width: `${Math.min(100, pct)}%` }} /></div>
 }
 
+/** Campo de contraseña con botón «Ver»: permite revisar lo escrito antes de enviarlo. */
+export function CampoPassword({ value, onChange, placeholder, autoFocus, disabled, id, autoComplete = 'new-password' }: {
+  value: string; onChange: (v: string) => void; placeholder?: string; autoFocus?: boolean; disabled?: boolean; id?: string; autoComplete?: string
+}) {
+  const [ver, setVer] = useState(false)
+  return (
+    <div style={{ display: 'flex', gap: 6 }}>
+      <input id={id} type={ver ? 'text' : 'password'} value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder}
+        autoFocus={autoFocus} disabled={disabled} autoComplete={autoComplete} spellCheck={false} />
+      <button type="button" className="btn btn-secondary btn-sm" onClick={() => setVer((v) => !v)} disabled={disabled}
+        aria-label={ver ? 'Ocultar contraseña' : 'Ver contraseña'} style={{ whiteSpace: 'nowrap' }}>{ver ? 'Ocultar' : 'Ver'}</button>
+    </div>
+  )
+}
+
+/** Sugerencia aleatoria de 14 caracteres (sin ambiguos) para quien no quiera inventar una. */
+export function sugerirPassword(): string {
+  const set = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789-_!'
+  const bytes = crypto.getRandomValues(new Uint32Array(14))
+  return Array.from(bytes, (b) => set[b % set.length]).join('')
+}
+
+export const passwordValida = (v: string) => v.length >= 8 && v.length <= 72 && v === v.trim()
+
 export function Spinner() {
   return <span className="spinner" style={{ borderTopColor: 'var(--inn-purple-600)', borderColor: 'var(--inn-purple-100)', display: 'inline-block' }} />
 }
@@ -64,19 +88,4 @@ export async function copiar(texto: string): Promise<boolean> {
 export function BotonCopiar({ texto, etiqueta = 'Copiar' }: { texto: string; etiqueta?: string }) {
   const [ok, setOk] = useState(false)
   return <button className="btn btn-secondary btn-sm" onClick={async () => { setOk(await copiar(texto)); setTimeout(() => setOk(false), 1800) }}>{ok ? '✓ Copiado' : etiqueta}</button>
-}
-
-/** Modal que muestra una contraseña generada UNA sola vez. */
-export function PasswordUnaVez({ titulo, username, password, onClose }: { titulo: string; username: string; password: string; onClose: () => void }) {
-  return (
-    <Modal title={titulo}>
-      <p style={{ marginTop: 0 }}>Usuario: <strong>{username}</strong></p>
-      <div className="pw-box">{password}</div>
-      <div className="callout callout-warn">Esta contraseña se muestra <strong>una sola vez</strong>. Cópiala y entrégala ahora: el sistema no puede mostrarla de nuevo (solo generar otra).</div>
-      <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-        <BotonCopiar texto={password} etiqueta="Copiar contraseña" />
-        <button className="btn btn-primary" onClick={onClose}>Ya la guardé</button>
-      </div>
-    </Modal>
-  )
 }

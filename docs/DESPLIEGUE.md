@@ -72,8 +72,9 @@ export AES_KEY_B64="$(python3 -c 'import secrets,base64;print(base64.b64encode(s
 python -m app.cli crear-admin "Nombre Apellido"
 ```
 
-Imprime el usuario y una contraseña de 18 caracteres **una sola vez**. Entra a la app con ellos y, desde **Equipo**, da de alta al
-resto del equipo (CMs y otros admins; cada contraseña también se muestra una sola vez). Si algún día pierdes el acceso del único admin:
+Imprime el usuario y una contraseña temporal de 18 caracteres **una sola vez** (solo para este primer admin). Entra a la app con ellos y, desde
+**Equipo**, da de alta al resto del equipo (CMs y otros admins): **tú escribes la contraseña de cada persona** (mínimo 8 caracteres, con botón
+«Ver» para revisarla antes de crear) y se la entregas. Puedes cambiar tu propia contraseña y la de cualquiera desde **Equipo → Cambiar contraseña**. Si algún día pierdes el acceso del único admin:
 `python -m app.cli reset-password usuario` (misma forma).
 
 ## 4. Jobs programados en cron-job.org (respaldo del scheduler)

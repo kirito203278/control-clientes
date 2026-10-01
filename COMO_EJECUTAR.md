@@ -10,8 +10,9 @@ docker compose exec backend python -m app.seed   # datos de ejemplo FICTICIOS (s
 ```
 
 - Aplicación: http://localhost:8000 · Adminer (visor de BD): http://localhost:8081
-- Las contraseñas de los usuarios de ejemplo (`admin.demo`, `lectura.demo`, `ana.ruiz`, `beto.luna`, `carla.soto`) quedan en
-  `backend/seed_credentials.txt` dentro del contenedor: `docker compose exec backend cat seed_credentials.txt`.
+- Usuarios de ejemplo (contraseñas de prueba fijas): `admin.demo` / `Admin-Demo-2026`, `lectura.demo` / `Lectura-Demo-2026`,
+  `ana.ruiz` / `Ana-Demo-2026`, `beto.luna` / `Beto-Demo-2026`, `carla.soto` / `Carla-Demo-2026`. Solo para desarrollo: en producción
+  NO se siembra y el admin crea a cada usuario con la contraseña que elija.
 - Volver a sembrar desde cero (solo dev): `docker compose exec -e FORCE_SEED=true backend python -m app.seed`
 - Crear un admin sin datos de ejemplo: `docker compose exec backend python -m app.cli crear-admin "Nombre Apellido"`
 - Disparar un job a mano: `docker compose exec backend python -c "from app.jobs import tareas; print(tareas.ejecutar('renovaciones'))"`

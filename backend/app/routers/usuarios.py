@@ -3,7 +3,7 @@ import re
 import unicodedata
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
@@ -12,15 +12,35 @@ from app.database import get_db
 from app.deps import require_admin, require_admin_write
 from app.models import ArchivoNoRenovado, Cliente, Notificacion, Usuario
 from app.routers.auth import usuario_out
-from app.security.passwords import generate_secure_password, hash_password
+from app.security.passwords import hash_password
 
 router = APIRouter(prefix="/api/usuarios", tags=["equipo"])
+
+
+def _password_valida(v: str) -> str:
+    """La contraseña la elige el admin. Mínimo 8 caracteres; bcrypt solo usa los primeros 72 bytes, así que más no se acepta."""
+    if len(v) < 8:
+        raise ValueError("La contraseña debe tener al menos 8 caracteres")
+    if len(v.encode("utf-8")) > 72:
+        raise ValueError("La contraseña no puede pasar de 72 caracteres")
+    if v != v.strip():
+        raise ValueError("La contraseña no puede empezar ni terminar con espacios")
+    return v
 
 
 class AltaIn(BaseModel):
     nombre: str = Field(min_length=2, max_length=120)
     rol: str = Field(pattern="^(cm|admin)$")
     solo_lectura: bool = False
+    password: str
+
+    _val = field_validator("password")(_password_valida)
+
+
+class ResetIn(BaseModel):
+    password: str
+
+    _val = field_validator("password")(_password_valida)
 
 
 class BajaIn(BaseModel):
@@ -67,28 +87,26 @@ def listar(db: Session = Depends(get_db), _=Depends(require_admin)):
 def alta(datos: AltaIn, db: Session = Depends(get_db), admin: Usuario = Depends(require_admin_write)):
     if datos.rol == "cm" and datos.solo_lectura:
         raise HTTPException(422, "Solo un administrador puede ser de solo lectura")
-    password = generate_secure_password()
     u = Usuario(nombre=datos.nombre.strip(), username=username_disponible(db, datos.nombre), rol=datos.rol,
-                solo_lectura=datos.solo_lectura, password_hash=hash_password(password))
+                solo_lectura=datos.solo_lectura, password_hash=hash_password(datos.password))
     db.add(u)
     db.flush()
     bitacora.registrar(db, admin, "alta_usuario", {"usuario_id": u.id, "username": u.username, "rol": u.rol,
                                                    "solo_lectura": u.solo_lectura})
     db.commit()
-    # La contraseña se muestra UNA sola vez: no se guarda en claro en ningún lado.
-    return {**usuario_out(u), "password": password}
+    return usuario_out(u)          # la contraseña la eligió el admin: nunca se devuelve ni se guarda en claro
 
 
 @router.post("/{usuario_id}/reset-password")
-def reset_password(usuario_id: int, db: Session = Depends(get_db), admin: Usuario = Depends(require_admin_write)):
+def reset_password(usuario_id: int, datos: ResetIn, db: Session = Depends(get_db),
+                   admin: Usuario = Depends(require_admin_write)):
     u = db.get(Usuario, usuario_id)
     if u is None or not u.activo:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Usuario no encontrado")
-    password = generate_secure_password()
-    u.password_hash = hash_password(password)
+    u.password_hash = hash_password(datos.password)
     bitacora.registrar(db, admin, "reset_password", {"usuario_id": u.id, "username": u.username})
     db.commit()
-    return {"username": u.username, "password": password}
+    return {"username": u.username}
 
 
 @router.post("/{usuario_id}/baja")

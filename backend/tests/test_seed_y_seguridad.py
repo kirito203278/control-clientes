@@ -58,3 +58,12 @@ def test_seed_se_niega_si_ya_hay_usuarios(db, tmp_path):
     sembrar(db, credenciales_path=tmp_path / "c.txt")
     with pytest.raises(RuntimeError):
         sembrar(db, credenciales_path=tmp_path / "c.txt")
+
+
+def test_el_seed_deja_contrasenas_de_ejemplo_fijas(db, tmp_path):
+    cred = tmp_path / "c.txt"
+    sembrar(db, credenciales_path=cred)
+    filas = {l.split("\t")[0]: l.split("\t")[2].strip() for l in cred.read_text().splitlines() if not l.startswith("#")}
+    assert filas["admin.demo"] == "Admin-Demo-2026" and filas["ana.ruiz"] == "Ana-Demo-2026"
+    u = db.scalars(select(Usuario).where(Usuario.username == "ana.ruiz")).one()
+    assert verify_password("Ana-Demo-2026", u.password_hash)

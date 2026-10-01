@@ -81,3 +81,10 @@ CICLO_DIAS=30, TOLERANCIA_DIAS=3, PRORROGA_MAX_DIAS=15, AVISO_DIAS_ANTES_RENOVAC
 - Se retiró la pregunta «¿El cliente pagó?» de las notificaciones: ahora el vencimiento de prórroga actúa solo y deja el mensaje listo.
 - Jobs: `renovaciones` y `prorrogas` a las 00:05 y 12:00; `purga_no_renovados` a las 12:10.
 - Constantes: CICLO_DIAS=30, PRORROGA_MAX_DIAS=5, DIAS_PARA_DECIDIR=2, AVISO_DIAS_ANTES_RENOVACION=4, AVISO_PRORROGA_DIAS=3, PURGA_MESES=12, REINGRESO_MESES=2.
+
+## Contraseñas (cambio posterior)
+- Las contraseñas de usuarios ya NO las genera el sistema: el **admin las escribe** al crear un usuario y al cambiarlas (mínimo 8 y máximo 72 caracteres, sin espacios en los bordes; bcrypt).
+  La API nunca devuelve una contraseña y la bitácora no las guarda. Un CM no puede cambiar contraseñas.
+- Todos los campos de contraseña de la interfaz (login, alta/cambio de usuario, contraseña de Facebook del cliente) tienen botón «Ver/Ocultar» para revisar lo escrito.
+  El alta de usuario ofrece «Sugerir una» (aleatoria, generada en el navegador).
+- El seed deja contraseñas de EJEMPLO fijas (ver COMO_EJECUTAR.md). El CLI `python -m app.cli crear-admin` sigue generando una contraseña temporal para el primer admin de producción.

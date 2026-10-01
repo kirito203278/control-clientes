@@ -65,52 +65,72 @@ def test_sin_token_o_token_falso(api):
 def test_cm_no_accede_a_rutas_de_admin(api, crear_usuario, auth):
     h = auth(crear_usuario("ana.ruiz"))
     assert api.get("/api/usuarios", headers=h).status_code == 403
-    assert api.post("/api/usuarios", headers=h, json={"nombre": "X Y", "rol": "cm"}).status_code == 403
+    assert api.post("/api/usuarios", headers=h, json={"nombre": "X Y", "rol": "cm", "password": "Clave-1234"}).status_code == 403
     assert api.get("/api/admin/bitacora", headers=h).status_code == 403
 
 
 def test_admin_solo_lectura_ve_pero_no_escribe(api, crear_usuario, auth):
     h = auth(crear_usuario("lectura.demo", rol="admin", solo_lectura=True))
     assert api.get("/api/usuarios", headers=h).status_code == 200
-    assert api.post("/api/usuarios", headers=h, json={"nombre": "Nuevo Cm", "rol": "cm"}).status_code == 403
+    assert api.post("/api/usuarios", headers=h, json={"nombre": "Nuevo Cm", "rol": "cm", "password": "Clave-1234"}).status_code == 403
     assert api.post("/api/catalogos/paquetes", headers=h, json={"nombre": "Nuevo"}).status_code == 403
 
 
-def test_alta_de_usuario_password_18_una_sola_vez_y_bitacora(api, db, crear_usuario, auth):
+def test_alta_de_usuario_con_la_contrasena_que_elige_el_admin(api, db, crear_usuario, auth):
     h = auth(crear_usuario("admin.demo", rol="admin"))
-    r = api.post("/api/usuarios", headers=h, json={"nombre": "María López", "rol": "cm"})
+    r = api.post("/api/usuarios", headers=h, json={"nombre": "María López", "rol": "cm", "password": "Mi-clave-2026"})
     assert r.status_code == 201
     datos = r.json()
-    assert datos["username"] == "maria.lopez" and len(datos["password"]) == 18
+    assert datos["username"] == "maria.lopez" and "password" not in datos          # nunca se devuelve
     u = db.scalars(select(Usuario).where(Usuario.username == "maria.lopez")).one()
-    assert verify_password(datos["password"], u.password_hash) and datos["password"] not in u.password_hash
-    # el listado nunca devuelve contraseñas ni hashes
+    assert verify_password("Mi-clave-2026", u.password_hash) and "Mi-clave-2026" not in u.password_hash
     listado = api.get("/api/usuarios", headers=h).text
-    assert datos["password"] not in listado and "password_hash" not in listado
-    assert db.scalars(select(Bitacora).where(Bitacora.accion == "alta_usuario")).one().detalle["username"] == "maria.lopez"
-    # el nuevo usuario puede entrar con esa contraseña
-    assert api.post("/api/auth/login", json={"username": "maria.lopez", "password": datos["password"]}).status_code == 200
+    assert "Mi-clave-2026" not in listado and "password_hash" not in listado
+    bit = db.scalars(select(Bitacora).where(Bitacora.accion == "alta_usuario")).one()
+    assert bit.detalle["username"] == "maria.lopez" and "Mi-clave" not in str(bit.detalle)   # la bitácora no guarda contraseñas
+    assert api.post("/api/auth/login", json={"username": "maria.lopez", "password": "Mi-clave-2026"}).status_code == 200
+
+
+@pytest.mark.parametrize("password", ["corta", "1234567", " espacios al borde ", "x" * 73, "ñ" * 40])
+def test_contrasenas_invalidas_se_rechazan(api, crear_usuario, auth, password):
+    h = auth(crear_usuario("admin.demo", rol="admin"))
+    r = api.post("/api/usuarios", headers=h, json={"nombre": "Ana Nueva", "rol": "cm", "password": password})
+    assert r.status_code == 422
+    cm = crear_usuario("beto.luna")
+    assert api.post(f"/api/usuarios/{cm.id}/reset-password", headers=h, json={"password": password}).status_code == 422
+
+
+def test_la_contrasena_es_obligatoria_al_crear_y_al_resetear(api, crear_usuario, auth):
+    h = auth(crear_usuario("admin.demo", rol="admin"))
+    assert api.post("/api/usuarios", headers=h, json={"nombre": "Ana Nueva", "rol": "cm"}).status_code == 422
+    assert api.post(f"/api/usuarios/{crear_usuario('beto.luna').id}/reset-password", headers=h, json={}).status_code == 422
 
 
 def test_username_repetido_recibe_sufijo(api, crear_usuario, auth):
     h = auth(crear_usuario("admin.demo", rol="admin"))
-    a = api.post("/api/usuarios", headers=h, json={"nombre": "Luis Pérez", "rol": "cm"}).json()["username"]
-    b = api.post("/api/usuarios", headers=h, json={"nombre": "Luis Pérez", "rol": "admin"}).json()["username"]
+    a = api.post("/api/usuarios", headers=h, json={"nombre": "Luis Pérez", "rol": "cm", "password": "Clave-1234"}).json()["username"]
+    b = api.post("/api/usuarios", headers=h, json={"nombre": "Luis Pérez", "rol": "admin", "password": "Clave-1234"}).json()["username"]
     assert (a, b) == ("luis.perez", "luis.perez2")
 
 
 def test_cm_no_puede_ser_solo_lectura(api, crear_usuario, auth):
     h = auth(crear_usuario("admin.demo", rol="admin"))
-    assert api.post("/api/usuarios", headers=h, json={"nombre": "Ana Ruiz", "rol": "cm", "solo_lectura": True}).status_code == 422
+    assert api.post("/api/usuarios", headers=h, json={"nombre": "Ana Ruiz", "rol": "cm", "solo_lectura": True, "password": "Clave-1234"}).status_code == 422
 
 
-def test_reset_password_invalida_la_anterior(api, crear_usuario, auth):
+def test_reset_password_pone_la_que_escribe_el_admin_e_invalida_la_anterior(api, crear_usuario, auth):
     h = auth(crear_usuario("admin.demo", rol="admin"))
     cm = crear_usuario("ana.ruiz")
-    nueva = api.post(f"/api/usuarios/{cm.id}/reset-password", headers=h).json()["password"]
-    assert len(nueva) == 18
+    r = api.post(f"/api/usuarios/{cm.id}/reset-password", headers=h, json={"password": "Nueva-clave-77"})
+    assert r.status_code == 200 and r.json() == {"username": "ana.ruiz"}
     assert api.post("/api/auth/login", json={"username": "ana.ruiz", "password": cm._password}).status_code == 401
-    assert api.post("/api/auth/login", json={"username": "ana.ruiz", "password": nueva}).status_code == 200
+    assert api.post("/api/auth/login", json={"username": "ana.ruiz", "password": "Nueva-clave-77"}).status_code == 200
+
+
+def test_un_cm_no_puede_cambiar_contrasenas(api, crear_usuario, auth):
+    h = auth(crear_usuario("ana.ruiz"))
+    otro = crear_usuario("beto.luna")
+    assert api.post(f"/api/usuarios/{otro.id}/reset-password", headers=h, json={"password": "Hackeada-123"}).status_code == 403
 
 
 def _cliente(db, cm, nombre, estado="activo"):

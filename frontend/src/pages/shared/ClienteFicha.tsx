@@ -3,7 +3,7 @@ import { api, ApiError } from '../../api/client'
 import type { ClienteFicha as Ficha, Paquete, PaqueteDetalle, Recordatorio } from '../../api/types'
 import { useAuth } from '../../auth/AuthContext'
 import { RecordatorioModal } from '../../components/NotificationBell'
-import { Cargando, ErrorTexto, Progreso, Semaforo, copiar, useToast } from '../../components/ui'
+import { Cargando, CampoPassword, ErrorTexto, Progreso, Semaforo, copiar, useToast } from '../../components/ui'
 import { ESTADO_LABEL, SEMAFORO_LABEL, dinero, diasTexto, fecha, hoyIso, sumarDias } from '../../util'
 import { AgregarPaqueteModal, EditarPaqueteModal, NoRenovarModal, RenovarModal } from './modales'
 
@@ -86,6 +86,7 @@ function DatosCliente({ ficha, puedeEscribir, onGuardado, onEliminado }: { ficha
   const base = { nombre: ficha.nombre, correo_fb: ficha.correo_fb ?? '', correo_contacto: ficha.correo_contacto ?? '', telefono: ficha.telefono ?? '', observaciones: ficha.observaciones ?? '' }
   const [d, setD] = useState(base)
   const [nuevaPwd, setNuevaPwd] = useState('')
+  const [cambiandoPwd, setCambiandoPwd] = useState(false)
   const [pwdVisible, setPwdVisible] = useState<string | null>(null)
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -98,7 +99,7 @@ function DatosCliente({ ficha, puedeEscribir, onGuardado, onEliminado }: { ficha
     setGuardando(true); setError(null)
     try {
       const f = await api.patch<Ficha>(`/clientes/${ficha.id}`, { ...d, ...(nuevaPwd ? { password_fb: nuevaPwd } : {}) })
-      setNuevaPwd(''); setPwdVisible(null); onGuardado(f)
+      setNuevaPwd(''); setCambiandoPwd(false); setPwdVisible(null); onGuardado(f)
     } catch (e) { setError(msg(e, 'No se pudo guardar')) } finally { setGuardando(false) }
   }
   async function ver() {
@@ -116,14 +117,17 @@ function DatosCliente({ ficha, puedeEscribir, onGuardado, onEliminado }: { ficha
         <div className="field"><label>Teléfono personal</label><input type="text" value={d.telefono} onChange={set('telefono')} disabled={ro} /></div>
         <div className="field"><label>Correo de Facebook</label><input type="text" value={d.correo_fb} onChange={set('correo_fb')} disabled={ro} /></div>
         <div className="field"><label>Contraseña de Facebook</label>
-          <div style={{ display: 'flex', gap: 6 }}>
-            {ficha.tiene_password_fb && !nuevaPwd
-              ? <input type="text" readOnly value={pwdVisible ?? '••••••••••'} style={{ fontFamily: pwdVisible ? 'monospace' : undefined }} />
-              : <input type="password" autoComplete="new-password" placeholder={ficha.tiene_password_fb ? 'Nueva contraseña' : 'Sin contraseña guardada'} value={nuevaPwd} onChange={(e) => setNuevaPwd(e.target.value)} disabled={ro} />}
-            {ficha.tiene_password_fb && <button className="btn btn-secondary btn-sm" onClick={ver}>{pwdVisible !== null ? 'Ocultar' : 'Ver'}</button>}
-            {pwdVisible !== null && <button className="btn btn-secondary btn-sm" onClick={() => copiar(pwdVisible)}>Copiar</button>}
-          </div>
-          {!ro && ficha.tiene_password_fb && !nuevaPwd && <button className="btn btn-ghost btn-sm" style={{ marginTop: 4, padding: '2px 6px' }} onClick={() => setNuevaPwd(' ')}>Cambiar contraseña</button>}
+          {ficha.tiene_password_fb && !cambiandoPwd ? (
+            <div style={{ display: 'flex', gap: 6 }}>
+              <input type="text" readOnly value={pwdVisible ?? '••••••••••'} style={{ fontFamily: pwdVisible ? 'monospace' : undefined }} />
+              <button className="btn btn-secondary btn-sm" onClick={ver}>{pwdVisible !== null ? 'Ocultar' : 'Ver'}</button>
+              {pwdVisible !== null && <button className="btn btn-secondary btn-sm" onClick={() => copiar(pwdVisible)}>Copiar</button>}
+            </div>
+          ) : (
+            <CampoPassword placeholder={ficha.tiene_password_fb ? 'Escribe la contraseña nueva' : 'Sin contraseña guardada'} value={nuevaPwd} onChange={setNuevaPwd} disabled={ro} />
+          )}
+          {!ro && ficha.tiene_password_fb && !cambiandoPwd && <button className="btn btn-ghost btn-sm" style={{ marginTop: 4, padding: '2px 6px' }} onClick={() => { setCambiandoPwd(true); setPwdVisible(null) }}>Cambiar contraseña</button>}
+          {!ro && cambiandoPwd && <button className="btn btn-ghost btn-sm" style={{ marginTop: 4, padding: '2px 6px' }} onClick={() => { setCambiandoPwd(false); setNuevaPwd('') }}>Cancelar cambio</button>}
         </div>
         <div className="field"><label>Correo de contacto</label><input type="text" value={d.correo_contacto} onChange={set('correo_contacto')} disabled={ro} /></div>
       </div>
@@ -132,7 +136,7 @@ function DatosCliente({ ficha, puedeEscribir, onGuardado, onEliminado }: { ficha
       {!ro && (
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           <button className="btn btn-primary" disabled={!sucio || guardando || !d.nombre.trim()} onClick={guardar}>Guardar cambios</button>
-          {sucio && <button className="btn btn-ghost" onClick={() => { setD(base); setNuevaPwd('') }}>Descartar</button>}
+          {sucio && <button className="btn btn-ghost" onClick={() => { setD(base); setNuevaPwd(''); setCambiandoPwd(false) }}>Descartar</button>}
           <span className="right" />
           {!borrando ? <button className="btn btn-ghost btn-sm" onClick={() => setBorrando(true)}>Eliminar cliente…</button> : (
             <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
