@@ -120,3 +120,51 @@ def auth(api):
         assert r.status_code == 200, r.text
         return {"Authorization": f"Bearer {r.json()['access_token']}"}
     return _auth
+
+
+@pytest.fixture
+def hoy_fijo():
+    """hoy_fijo(date) congela 'hoy' para probar reglas por fecha."""
+    from app import dates
+    yield dates.fijar_hoy
+    dates.fijar_hoy(None)
+
+
+@pytest.fixture
+def fabrica(db, crear_usuario):
+    """Atajos para armar escenarios: cliente(cm, nombre) y ciclo(cliente, ...)."""
+    import datetime as dt
+    from decimal import Decimal
+
+    from sqlalchemy import select
+
+    from app.models import CatalogoPaquete, CatalogoTipo, Cliente, PaqueteCliente, Pago, Usuario
+
+    class F:
+        def cliente(self, cm, nombre="Cliente Demo", estado="activo", telefono="5512345678"):
+            c = Cliente(cm_id=cm.id if cm else None, nombre=nombre, estado=estado, telefono=telefono)
+            db.add(c)
+            db.flush()
+            return c
+
+        def ciclo(self, cliente, renov, costo=1500, estado="activo", decision="pendiente", paquete="Básico",
+                  tipo="Normal", pagos=(), anterior=None, por=None, prorroga=None):
+            p = PaqueteCliente(
+                cliente_id=cliente.id, costo=Decimal(costo), estado=estado, renovacion_decision=decision,
+                paquete_id=db.scalar(select(CatalogoPaquete.id).where(CatalogoPaquete.nombre == paquete)),
+                tipo_id=db.scalar(select(CatalogoTipo.id).where(CatalogoTipo.nombre == tipo)),
+                fecha_inicio=renov - dt.timedelta(days=30), fecha_renovacion=renov,
+                ciclo_anterior_id=anterior.id if anterior else None,
+                prorroga_registrada_en=prorroga[0] if prorroga else None,
+                prorroga_hasta=prorroga[1] if prorroga else None)
+            db.add(p)
+            db.flush()
+            quien = por or (db.get(Usuario, cliente.cm_id) if cliente.cm_id else None)
+            for monto, fecha in pagos:
+                db.add(Pago(paquete_id=p.id, monto=Decimal(monto), fecha=fecha, registrado_por=quien.id))
+            db.flush()
+            db.refresh(p)
+            p.renovacion_pagada = sum(Decimal(m) for m, _ in pagos) >= p.costo
+            return p
+
+    return F()

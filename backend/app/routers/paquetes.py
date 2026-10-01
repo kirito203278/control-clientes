@@ -1,0 +1,205 @@
+"""Paquetes (ciclos) de un cliente: alta, edición, pagos, prórroga y recordatorios al cliente."""
+import datetime as dt
+from decimal import Decimal
+
+from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel, Field
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from app import bitacora
+from app.config import get_settings
+from app.database import get_db
+from app.dates import ahora, hoy as hoy_mx
+from app.deps import get_current_user, require_writer
+from app.models import Pago, PaqueteCliente, RecordatorioCliente, Renovacion, Usuario
+from app.routers.clientes import PaqueteNuevo, crear_ciclo, validar_catalogos
+from app.services import ciclos, recordatorios
+from app.services import pagos as pagos_svc
+from app.services.scope import obtener_cliente, obtener_pago, obtener_paquete, paquetes_q
+
+router = APIRouter(prefix="/api", tags=["paquetes"])
+
+
+class PaquetePatch(BaseModel):
+    paquete_id: int | None = None
+    tipo_id: int | None = None
+    costo: Decimal | None = Field(default=None, ge=0, max_digits=10, decimal_places=2)
+    fecha_renovacion: dt.date | None = None
+
+
+class PagoIn(BaseModel):
+    monto: Decimal = Field(gt=0, max_digits=10, decimal_places=2)
+    fecha: dt.date | None = None
+    nota: str | None = Field(default=None, max_length=300)
+
+
+class ProrrogaIn(BaseModel):
+    hasta: dt.date
+
+
+def pago_out(g: Pago, nombres: dict[int, str]) -> dict:
+    return {"id": g.id, "monto": g.monto, "fecha": g.fecha, "nota": g.nota, "registrado_por": g.registrado_por,
+            "registrado_por_nombre": nombres.get(g.registrado_por), "creado_en": g.creado_en}
+
+
+def _editable(p: PaqueteCliente) -> None:
+    if p.estado not in ciclos.VIGENTES:
+        raise HTTPException(409, "Este paquete ya no está vigente")
+
+
+@router.post("/clientes/{cliente_id}/paquetes", status_code=status.HTTP_201_CREATED)
+def agregar_paquete(cliente_id: int, datos: PaqueteNuevo, db: Session = Depends(get_db),
+                    user: Usuario = Depends(require_writer)):
+    c = obtener_cliente(db, user, cliente_id)
+    if c.estado != "activo":
+        raise HTTPException(409, "El cliente está en No renovados: usa el reingreso")
+    p = crear_ciclo(db, c, datos)
+    bitacora.registrar_si_admin(db, user, "alta_paquete_admin", {"cliente_id": c.id, "paquete_id": p.id})
+    db.commit()
+    return {"id": p.id}
+
+
+@router.get("/paquetes/{paquete_id}")
+def detalle(paquete_id: int, db: Session = Depends(get_db), user: Usuario = Depends(get_current_user)):
+    p = obtener_paquete(db, user, paquete_id)
+    hoy = hoy_mx()
+    nombres = {u.id: u.nombre for u in db.scalars(select(Usuario))}
+    # cadena de ciclos del mismo paquete: hacia atrás y hacia adelante
+    cadena, actual = [], p
+    while actual is not None:
+        cadena.append(actual)
+        actual = db.get(PaqueteCliente, actual.ciclo_anterior_id) if actual.ciclo_anterior_id else None
+    sig = db.scalars(paquetes_q(user).where(PaqueteCliente.ciclo_anterior_id == p.id)).first()
+    while sig is not None:
+        cadena.insert(0, sig)
+        sig = db.scalars(paquetes_q(user).where(PaqueteCliente.ciclo_anterior_id == sig.id)).first()
+    renov = db.scalars(select(Renovacion).where(Renovacion.ciclo_anterior_id.in_([x.id for x in cadena]))
+                       .order_by(Renovacion.fecha.desc())).all()
+    return {**ciclos.paquete_out(p, hoy),
+            "pagos": [pago_out(g, nombres) for g in sorted(p.pagos, key=lambda g: (g.fecha, g.id), reverse=True)],
+            "ciclos": [ciclos.paquete_out(x, hoy) for x in cadena],
+            "renovaciones": [{"id": r.id, "fecha": r.fecha, "ciclo_anterior_id": r.ciclo_anterior_id,
+                              "ciclo_nuevo_id": r.ciclo_nuevo_id, "costo_anterior": r.costo_anterior,
+                              "costo_nuevo": r.costo_nuevo, "paquete_anterior_id": r.paquete_anterior_id,
+                              "paquete_nuevo_id": r.paquete_nuevo_id} for r in renov]}
+
+
+@router.patch("/paquetes/{paquete_id}")
+def editar_paquete(paquete_id: int, datos: PaquetePatch, db: Session = Depends(get_db),
+                   user: Usuario = Depends(require_writer)):
+    p = obtener_paquete(db, user, paquete_id)
+    _editable(p)
+    campos = datos.model_dump(exclude_unset=True, exclude_none=True)
+    if "paquete_id" in campos or "tipo_id" in campos:
+        validar_catalogos(db, campos.get("paquete_id", p.paquete_id), campos.get("tipo_id", p.tipo_id))
+    if "fecha_renovacion" in campos and campos["fecha_renovacion"] < p.fecha_inicio:
+        raise HTTPException(422, "La fecha de renovación no puede ser anterior al inicio")
+    antes = {k: str(getattr(p, k)) for k in campos}
+    for k, v in campos.items():
+        setattr(p, k, v)
+    db.flush()
+    ciclos.recalcular_pagada(p)
+    bitacora.registrar(db, user, "editar_paquete", {"paquete_id": p.id, "antes": antes,
+                                                    "despues": {k: str(v) for k, v in campos.items()}})
+    db.commit()
+    db.refresh(p)
+    return ciclos.paquete_out(p, hoy_mx())
+
+
+@router.post("/paquetes/{paquete_id}/pagos", status_code=status.HTTP_201_CREATED)
+def registrar_pago(paquete_id: int, datos: PagoIn, db: Session = Depends(get_db),
+                   user: Usuario = Depends(require_writer)):
+    p = obtener_paquete(db, user, paquete_id)
+    g = pagos_svc.registrar_pago(db, user, p, datos.monto, datos.fecha, datos.nota)
+    hoy = hoy_mx()
+    db.commit()
+    db.refresh(p)
+    return {"pago_id": g.id, "paquete": ciclos.paquete_out(p, hoy)}
+
+
+@router.delete("/pagos/{pago_id}")
+def borrar_pago(pago_id: int, db: Session = Depends(get_db), user: Usuario = Depends(require_writer)):
+    g = obtener_pago(db, user, pago_id)
+    if user.rol == "cm" and not (g.registrado_por == user.id and g.creado_en.astimezone(ahora().tzinfo).date() == hoy_mx()):
+        raise HTTPException(403, "Solo puedes borrar tus propios pagos, el mismo día en que los registraste")
+    p = obtener_paquete(db, user, g.paquete_id)
+    bitacora.registrar(db, user, "borrar_pago", {"pago_id": g.id, "paquete_id": p.id, "monto": str(g.monto),
+                                                 "fecha": str(g.fecha)})
+    db.delete(g)
+    db.flush()
+    db.refresh(p)
+    ciclos.recalcular_pagada(p)
+    db.commit()
+    return {"ok": True}
+
+
+@router.put("/paquetes/{paquete_id}/prorroga")
+def registrar_prorroga(paquete_id: int, datos: ProrrogaIn, db: Session = Depends(get_db),
+                       user: Usuario = Depends(require_writer)):
+    """Plazo extra para pagar. Máximo `prorroga_max_dias` días NATURALES contados desde HOY (cuando se registra).
+    Una por ciclo: cambiarla solo puede hacerlo un admin (queda en bitácora)."""
+    p = obtener_paquete(db, user, paquete_id)
+    if p.estado not in ciclos.COBRABLES:
+        raise HTTPException(409, "Este paquete ya no admite prórroga")
+    if ciclos.pagado_hasta(p) >= p.costo:
+        raise HTTPException(422, "El paquete no tiene saldo pendiente: no necesita prórroga")
+    hoy, maximo = hoy_mx(), get_settings().prorroga_max_dias
+    if p.prorroga_hasta is not None and user.rol != "admin":
+        raise HTTPException(409, "Este paquete ya tiene una prórroga registrada; solo un administrador puede cambiarla")
+    if datos.hasta < hoy:
+        raise HTTPException(422, "La fecha límite no puede ser anterior a hoy")
+    if datos.hasta > hoy + dt.timedelta(days=maximo):
+        raise HTTPException(422, f"La prórroga no puede exceder {maximo} días naturales desde hoy "
+                                 f"(máximo {(hoy + dt.timedelta(days=maximo)).strftime('%d/%m/%Y')})")
+    previa = p.prorroga_hasta
+    p.prorroga_registrada_en, p.prorroga_hasta = hoy, datos.hasta
+    bitacora.registrar_si_admin(db, user, "prorroga_por_admin" if previa is None else "prorroga_modificada",
+                                {"paquete_id": p.id, "hasta": str(datos.hasta), "previa": str(previa) if previa else None})
+    db.commit()
+    db.refresh(p)
+    return ciclos.paquete_out(p, hoy)
+
+
+def recordatorio_out(r: RecordatorioCliente, telefono: str | None) -> dict:
+    return {"id": r.id, "paquete_id": r.paquete_id, "texto": r.texto, "wa_url": recordatorios.wa_url(telefono, r.texto),
+            "telefono": telefono, "generado_en": r.generado_en, "enviado_en": r.enviado_en}
+
+
+def generar_recordatorio(db: Session, p: PaqueteCliente, cm_id: int | None) -> RecordatorioCliente:
+    restante = p.costo - ciclos.pagado_hasta(p)
+    texto = recordatorios.armar_texto(p.cliente.nombre, p.paquete.nombre, restante, p.prorroga_hasta)
+    r = RecordatorioCliente(paquete_id=p.id, cliente_id=p.cliente_id, cm_id=cm_id,
+                            telefono_destino=recordatorios.normalizar_telefono(p.cliente.telefono), texto=texto)
+    db.add(r)
+    db.flush()
+    return r
+
+
+@router.post("/paquetes/{paquete_id}/recordatorio", status_code=status.HTTP_201_CREATED)
+def crear_recordatorio(paquete_id: int, db: Session = Depends(get_db), user: Usuario = Depends(require_writer)):
+    p = obtener_paquete(db, user, paquete_id)
+    if p.costo - ciclos.pagado_hasta(p) <= 0:
+        raise HTTPException(422, "El paquete no tiene saldo pendiente")
+    r = generar_recordatorio(db, p, p.cliente.cm_id)
+    db.commit()
+    return recordatorio_out(r, p.cliente.telefono)
+
+
+@router.get("/paquetes/{paquete_id}/recordatorios")
+def listar_recordatorios(paquete_id: int, db: Session = Depends(get_db), user: Usuario = Depends(get_current_user)):
+    p = obtener_paquete(db, user, paquete_id)
+    filas = db.scalars(select(RecordatorioCliente).where(RecordatorioCliente.paquete_id == p.id)
+                       .order_by(RecordatorioCliente.id.desc())).all()
+    return [recordatorio_out(r, p.cliente.telefono) for r in filas]
+
+
+@router.post("/recordatorios/{recordatorio_id}/marcar-enviado")
+def marcar_enviado(recordatorio_id: int, db: Session = Depends(get_db), user: Usuario = Depends(require_writer)):
+    r = db.get(RecordatorioCliente, recordatorio_id)
+    if r is None:
+        raise HTTPException(404, "Recordatorio no encontrado")
+    p = obtener_paquete(db, user, r.paquete_id)       # 404 si no es de su cartera
+    r.enviado_en = r.enviado_en or ahora()
+    db.commit()
+    return recordatorio_out(r, p.cliente.telefono)

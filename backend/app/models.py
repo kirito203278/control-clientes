@@ -57,7 +57,7 @@ class Cliente(Base):
     creado_en: Mapped[dt.datetime] = _ts()
     actualizado_en: Mapped[dt.datetime] = _ts()
 
-    paquetes: Mapped[list["PaqueteCliente"]] = relationship(back_populates="cliente", cascade="all, delete-orphan")
+    paquetes: Mapped[list["PaqueteCliente"]] = relationship(back_populates="cliente", cascade="all, delete-orphan", passive_deletes=True)
 
 
 class PaqueteCliente(Base):
@@ -82,7 +82,7 @@ class PaqueteCliente(Base):
     cliente: Mapped[Cliente] = relationship(back_populates="paquetes")
     paquete: Mapped[CatalogoPaquete] = relationship()
     tipo: Mapped[CatalogoTipo] = relationship()
-    pagos: Mapped[list["Pago"]] = relationship(back_populates="paquete_cliente", cascade="all, delete-orphan")
+    pagos: Mapped[list["Pago"]] = relationship(back_populates="paquete_cliente", cascade="all, delete-orphan", passive_deletes=True)
 
     @property
     def pagado(self) -> Decimal:

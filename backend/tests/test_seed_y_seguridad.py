@@ -50,7 +50,7 @@ def test_seed(db, tmp_path):
     assert db.scalar(select(func.count()).select_from(ArchivoNoRenovado)) == 3
     multi = db.scalars(select(Cliente).where(Cliente.nombre == "Dra. Mariana Vélez")).one()
     assert len(multi.paquetes) == 2
-    vencida = db.scalars(select(PaqueteCliente).where(PaqueteCliente.estado == "renovado")).one()
+    vencida = db.scalars(select(PaqueteCliente).join(Cliente).where(PaqueteCliente.estado == "renovado", Cliente.nombre == "Papelería El Lápiz")).one()
     assert vencida.restante == 1000 and vencida.prorroga_hasta < hoy()  # prórroga vencida con deuda
 
 

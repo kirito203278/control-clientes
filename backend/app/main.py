@@ -1,11 +1,24 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
-from app.routers import admin, auth, catalogos, usuarios
+from app.jobs.scheduler import start_scheduler, stop_scheduler
+from app.routers import (admin, auth, catalogos, clientes, jobs, notificaciones, paquetes, renovacion, usuarios)
 
 settings = get_settings()
-app = FastAPI(title="INNquietus · Control de clientes")
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    if settings.scheduler_enabled:
+        start_scheduler()
+    yield
+    stop_scheduler()
+
+
+app = FastAPI(title="INNquietus · Control de clientes", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -15,7 +28,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-for r in (auth.router, usuarios.router, catalogos.router, admin.router):
+for r in (auth.router, usuarios.router, catalogos.router, admin.router, clientes.router, paquetes.router,
+          renovacion.router, notificaciones.router, jobs.router):
     app.include_router(r)
 
 

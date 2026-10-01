@@ -1,12 +1,22 @@
-"""Fechas de negocio en America/Mexico_City."""
+"""Fechas de negocio en America/Mexico_City. `fijar_hoy` existe solo para pruebas de reglas por fecha."""
 import datetime as dt
 from zoneinfo import ZoneInfo
 
 from app.config import get_settings
 
+_hoy_fijo: dt.date | None = None
+
+
+def fijar_hoy(fecha: dt.date | None) -> None:
+    global _hoy_fijo
+    _hoy_fijo = fecha
+
 
 def ahora() -> dt.datetime:
-    return dt.datetime.now(ZoneInfo(get_settings().tz))
+    tz = ZoneInfo(get_settings().tz)
+    if _hoy_fijo is not None:
+        return dt.datetime.combine(_hoy_fijo, dt.time(12, 0), tzinfo=tz)
+    return dt.datetime.now(tz)
 
 
 def hoy() -> dt.date:
