@@ -31,7 +31,7 @@ El proyecto
 - Frontend: React + TypeScript + Vite, compilado y servido por el backend
 - 186 pruebas automatizadas, todas en verde
 - Levantarlo para probar: docker compose -f docker-compose.demo.yml up --build
-  (abre http://localhost:8000, usuario admin.demo, contraseña Admin-Demo-2026)
+  (abre http://localhost:8000, usuario admin.demo, contraseña 10000001)
 - Correr las pruebas: cd backend && python -m pytest -q
   (necesitan un PostgreSQL real; cada corrida crea y borra su propia base)
 

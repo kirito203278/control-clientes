@@ -61,6 +61,6 @@ def test_el_seed_deja_contrasenas_de_ejemplo_fijas(db, tmp_path):
     cred = tmp_path / "c.txt"
     sembrar(db, credenciales_path=cred)
     filas = {l.split("\t")[0]: l.split("\t")[2].strip() for l in cred.read_text().splitlines() if not l.startswith("#")}
-    assert filas["admin.demo"] == "Admin-Demo-2026" and filas["ana.ruiz"] == "Ana-Demo-2026"
+    assert filas["admin.demo"] == "10000001" and filas["ana.ruiz"] == "10000003"
     u = db.scalars(select(Usuario).where(Usuario.username == "ana.ruiz")).one()
-    assert verify_password("Ana-Demo-2026", u.password_hash)
+    assert verify_password("10000003", u.password_hash)

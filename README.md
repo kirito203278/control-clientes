@@ -17,11 +17,11 @@ Se crean solas las tablas y unos datos de ejemplo (clientes ficticios).
 
 | Usuario | Contraseña | Rol |
 |---|---|---|
-| `admin.demo` | `Admin-Demo-2026` | administrador |
-| `lectura.demo` | `Lectura-Demo-2026` | administrador de solo lectura |
-| `ana.ruiz` | `Ana-Demo-2026` | CM |
-| `beto.luna` | `Beto-Demo-2026` | CM |
-| `carla.soto` | `Carla-Demo-2026` | CM |
+| `admin.demo` | `10000001` | administrador |
+| `lectura.demo` | `10000002` | administrador de solo lectura |
+| `ana.ruiz` | `10000003` | CM |
+| `beto.luna` | `10000004` | CM |
+| `carla.soto` | `10000005` | CM |
 
 Los datos de ejemplo son 31 clientes ficticios (10 por CM y 1 por reasignar), con meses de historial para que los reportes y los ingresos tengan qué mostrar. Hay uno de cada situación:
 

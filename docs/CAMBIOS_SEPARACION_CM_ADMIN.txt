@@ -213,11 +213,15 @@ PRUEBAS ADAPTADAS (las reglas que cambiaron)
     monto adeudado; Catálogos con el campo de costo.
 - Compilación de TypeScript sin errores.
 
-OJO: las contraseñas de demo de esta máquina se restablecieron durante la
-prueba (ana.ruiz y admin.demo). Si hace falta, se vuelven a fijar con
-`docker compose exec backend python -m app.cli reset-password <usuario>`,
-o se recarga el demo desde cero con
-`docker compose -f docker-compose.demo.yml down -v` y volver a levantarlo.
+CONTRASEÑAS DE DEMO (cambiadas en esta sesión, a petición del usuario: solo
+números, 8 dígitos). Están fijas en backend/app/seed.py, así que se mantienen
+al recargar el demo. Solo para desarrollo.
+  admin.demo    10000001   administrador
+  lectura.demo  10000002   administrador de solo lectura
+  ana.ruiz      10000003   CM
+  beto.luna     10000004   CM
+  carla.soto    10000005   CM
+Se actualizaron también README.md, COMO_EJECUTAR.md y la prueba del seed.
 
 
 ================================================================================

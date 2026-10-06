@@ -19,11 +19,11 @@ from app.security.passwords import hash_password
 CREDENCIALES_PATH = Path(__file__).resolve().parent.parent / "seed_credentials.txt"
 
 USUARIOS = [
-    ("Admin Demo", "admin.demo", "admin", False, "Admin-Demo-2026"),
-    ("Lectura Demo", "lectura.demo", "admin", True, "Lectura-Demo-2026"),
-    ("Ana Ruiz", "ana.ruiz", "cm", False, "Ana-Demo-2026"),
-    ("Beto Luna", "beto.luna", "cm", False, "Beto-Demo-2026"),
-    ("Carla Soto", "carla.soto", "cm", False, "Carla-Demo-2026"),
+    ("Admin Demo", "admin.demo", "admin", False, "10000001"),
+    ("Lectura Demo", "lectura.demo", "admin", True, "10000002"),
+    ("Ana Ruiz", "ana.ruiz", "cm", False, "10000003"),
+    ("Beto Luna", "beto.luna", "cm", False, "10000004"),
+    ("Carla Soto", "carla.soto", "cm", False, "10000005"),
 ]
 
 

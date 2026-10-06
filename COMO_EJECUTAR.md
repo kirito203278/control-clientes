@@ -12,8 +12,8 @@ docker compose exec backend python -m app.seed   # datos de ejemplo FICTICIOS (s
 ```
 
 - Aplicación: http://localhost:8000 · Adminer (visor de BD): http://localhost:8081
-- Usuarios de ejemplo (contraseñas de prueba fijas): `admin.demo` / `Admin-Demo-2026`, `lectura.demo` / `Lectura-Demo-2026`,
-  `ana.ruiz` / `Ana-Demo-2026`, `beto.luna` / `Beto-Demo-2026`, `carla.soto` / `Carla-Demo-2026`. Solo para desarrollo: en producción
+- Usuarios de ejemplo (contraseñas de prueba fijas): `admin.demo` / `10000001`, `lectura.demo` / `10000002`,
+  `ana.ruiz` / `10000003`, `beto.luna` / `10000004`, `carla.soto` / `10000005`. Solo para desarrollo: en producción
   NO se siembra y el admin crea a cada usuario con la contraseña que elija.
 - Volver a sembrar desde cero (solo dev): `docker compose exec -e FORCE_SEED=true backend python -m app.seed`
 - Crear un admin sin datos de ejemplo: `docker compose exec backend python -m app.cli crear-admin "Nombre Apellido"`
