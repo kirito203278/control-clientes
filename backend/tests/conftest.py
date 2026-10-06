@@ -19,14 +19,28 @@ from sqlalchemy.orm import Session
 from app.migrations.run_migrations import run_migrations
 
 
-def _server_url() -> str | None:
+def _candidatos() -> list[str]:
     if os.getenv("TEST_DATABASE_URL"):
-        return os.environ["TEST_DATABASE_URL"]
+        return [os.environ["TEST_DATABASE_URL"]]
+    urls = []
     env = Path(__file__).resolve().parents[2] / ".env"
+    puerto = "5434"
     if env.exists():
         v = dotenv_values(env)
+        puerto = v.get("DB_PORT", "5434")
         if v.get("POSTGRES_USER") and v.get("POSTGRES_PASSWORD"):
-            return f"postgresql://{v['POSTGRES_USER']}:{v['POSTGRES_PASSWORD']}@localhost:{v.get('DB_PORT', '5434')}/postgres"
+            urls.append(f"postgresql://{v['POSTGRES_USER']}:{v['POSTGRES_PASSWORD']}@localhost:{puerto}/postgres")
+    urls.append(f"postgresql://demo:demo@localhost:{puerto}/postgres")
+    return urls
+
+
+def _server_url() -> str | None:
+    for url in _candidatos():
+        try:
+            psycopg2.connect(url).close()
+            return url
+        except psycopg2.OperationalError:
+            continue
     return None
 
 
@@ -34,7 +48,9 @@ def _server_url() -> str | None:
 def test_db_url():
     server = _server_url()
     if not server:
-        pytest.skip("Sin servidor Postgres de pruebas (define TEST_DATABASE_URL o levanta `docker compose up -d db`)")
+        pytest.skip("No hay un Postgres de pruebas escuchando. Levántalo con `docker compose up -d db` "
+                    "(o `docker compose -f docker-compose.demo.yml up -d db` si usas el demo), "
+                    "o define TEST_DATABASE_URL.")
     nombre = f"cc_test_{uuid.uuid4().hex[:8]}"
     admin = psycopg2.connect(server)
     admin.autocommit = True

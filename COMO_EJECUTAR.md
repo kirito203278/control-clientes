@@ -45,3 +45,14 @@ quincena, jobs idempotentes, reportes (incluido recálculo de fórmulas del Exce
 
 ## Producción
 Ver **docs/DESPLIEGUE.md** (Render + Neon, cron-job.org, UptimeRobot, respaldos).
+
+## Los dos entornos no se pisan
+`docker-compose.yml` (proyecto `control-clientes`) y `docker-compose.demo.yml` (proyecto
+`control-clientes-demo`) tienen cada uno su nombre de proyecto, sus contenedores y su volumen.
+Usan los mismos puertos (8000 la aplicación, 5434 la base), así que **se levanta uno u otro, no los dos
+a la vez**: si intentas levantar el segundo, Docker avisa de que el puerto está ocupado. Para cambiar de
+uno a otro, baja el que esté corriendo primero (`docker compose down` o
+`docker compose -f docker-compose.demo.yml down`).
+
+Las pruebas se conectan a `localhost:5434` y funcionan con cualquiera de los dos: prueban primero las
+credenciales de `.env` y después las del demo. Solo necesitan que la base esté levantada.

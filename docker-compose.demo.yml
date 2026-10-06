@@ -1,3 +1,5 @@
+name: control-clientes-demo
+
 services:
   db:
     image: postgres:16-alpine
@@ -7,6 +9,8 @@ services:
       POSTGRES_PASSWORD: demo
       POSTGRES_DB: control_clientes
       TZ: America/Mexico_City
+    ports:
+      - "127.0.0.1:${DB_PORT:-5434}:5432"
     volumes:
       - demo_db:/var/lib/postgresql/data
     healthcheck:
