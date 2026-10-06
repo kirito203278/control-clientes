@@ -141,12 +141,14 @@ def tablero(anio: int | None = None, mes: int | None = None, quincena: str | Non
                                            selectinload(PaqueteCliente.tipo),
                                            selectinload(PaqueteCliente.pagos))).all()
     cms = {u.id: u.nombre for u in db.scalars(select(Usuario).where(Usuario.rol == "cm"))}
-    cols = {"por_vencer": [], "vencidos": [], "renovados_sin_pago": [], "completos": []}
+    cols = {"por_vencer": [], "en_prorroga": [], "vencidos": [], "renovados_sin_pago": [], "completos": []}
     en_plazo = 0
     for p in sorted(paquetes, key=lambda p: (p.fecha_renovacion, p.id)):
         en_periodo = p.fecha_renovacion >= per.desde
         pagado = ciclos.pagado_hasta(p) >= p.costo
-        if ciclos.es_vencido(p, hoy):
+        if ciclos.prorroga_activa(p, hoy):
+            cols["en_prorroga"].append(_tarjeta(p, hoy, cms, per.desde, user))
+        elif ciclos.es_vencido(p, hoy):
             cols["vencidos"].append(_tarjeta(p, hoy, cms, per.desde, user))
         elif p.estado == "renovado" and not pagado:
             cols["renovados_sin_pago"].append(_tarjeta(p, hoy, cms, per.desde, user))

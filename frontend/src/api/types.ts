@@ -58,7 +58,8 @@ export interface TarjetaTablero extends Paquete {
 }
 export interface Tablero {
   periodo: { anio: number; mes: number; quincena: string; desde: string; hasta: string; etiqueta: string }
-  columnas: { por_vencer: TarjetaTablero[]; vencidos: TarjetaTablero[]; renovados_sin_pago: TarjetaTablero[]; completos: TarjetaTablero[] }
+  columnas: { por_vencer: TarjetaTablero[]; en_prorroga: TarjetaTablero[]; vencidos: TarjetaTablero[]
+    renovados_sin_pago: TarjetaTablero[]; completos: TarjetaTablero[] }
   en_plazo: number
 }
 

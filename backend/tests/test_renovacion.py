@@ -543,7 +543,7 @@ def test_purga_frontera_de_12_meses_calendario(db, ctx, fabrica):
     assert purgar_no_renovados(db, dt.datetime(2026, 10, 1, 12, tzinfo=tz)) == ["Frontera"]
 
 
-def test_tablero_cuatro_columnas(api, db, ctx, fabrica, crear_usuario, auth):
+def test_tablero_cinco_columnas(api, db, ctx, fabrica, crear_usuario, auth):
     c = ctx["c"]
     por_vencer = fabrica.ciclo(c, H + D(3))
     vencido = fabrica.ciclo(c, H - D(1))
@@ -556,7 +556,8 @@ def test_tablero_cuatro_columnas(api, db, ctx, fabrica, crear_usuario, auth):
     fabrica.ciclo(otro, H + D(2))
     r = api.get("/api/renovaciones/tablero?anio=2026&mes=10&quincena=1", headers=ctx["h_cm"]).json()
     ids = {k: [t["id"] for t in v] for k, v in r["columnas"].items()}
-    assert ids == {"por_vencer": [por_vencer.id], "vencidos": [vencido.id], "renovados_sin_pago": [sin_pago.id], "completos": [completo.id]}
+    assert ids == {"por_vencer": [por_vencer.id], "en_prorroga": [], "vencidos": [vencido.id],
+                   "renovados_sin_pago": [sin_pago.id], "completos": [completo.id]}
     assert r["en_plazo"] == 1
     assert r["columnas"]["vencidos"][0]["arrastrado"] is True
     assert r["columnas"]["por_vencer"][0]["cliente_nombre"] == "Cliente Ana"
@@ -763,3 +764,43 @@ def test_el_cm_renueva_cuando_ya_esta_pagado_pero_no_elige_otro_paquete(api, db,
     assert r.status_code == 200 and r.json()["renovado_automaticamente"]
     nuevo = db.get(PaqueteCliente, r.json()["renovado_automaticamente"])
     assert nuevo.paquete_id == p.paquete_id and nuevo.costo == Decimal(1500)
+
+
+def test_con_la_prorroga_corriendo_se_trabaja_normal_no_sale_como_pendiente(api, db, ctx, fabrica):
+    p = fabrica.ciclo(ctx["c"], H - D(2), costo=1500, estado="vencido", decision="si",
+                      pagos=[(500, H - D(3))], por=ctx["admin"], prorroga=(H - D(1), H + D(4)))
+    p.confirmado_en = H - D(3)
+    db.flush()
+    d = api.get(f"/api/paquetes/{p.id}", headers=ctx["h"]).json()
+    assert d["prorroga_activa"] is True and d["bloqueado"] is False
+    assert d["semaforo"] == "amarillo" and d["opciones_bloqueo"] == []
+
+    assert api.get("/api/bloqueos", headers=ctx["h"]).json() == []
+    assert api.post(f"/api/paquetes/{p.id}/pagos", headers=ctx["h"], json={"monto": 100}).status_code == 201
+    assert api.patch(f"/api/clientes/{ctx['c'].id}", headers=ctx["h"], json={"telefono": "5500000000"}).status_code == 200
+
+    cols = api.get("/api/renovaciones/tablero?anio=2026&mes=10&quincena=ambas", headers=ctx["h"]).json()["columnas"]
+    assert p.id in [t["id"] for t in cols["en_prorroga"]]
+    assert p.id not in [t["id"] for t in cols["vencidos"]]
+
+
+def test_la_prorroga_no_mueve_la_fecha_de_renovacion_y_vence_al_terminar_su_ultimo_dia(api, db, ctx, fabrica, hoy_fijo):
+    from app.jobs import tareas
+    from app.models import Cliente
+    r_original = H - D(2)
+    p = fabrica.ciclo(ctx["c"], r_original, costo=1500, estado="vencido", decision="si",
+                      pagos=[(500, H - D(3))], por=ctx["admin"], prorroga=(H - D(1), H + D(4)))
+    p.confirmado_en = H - D(3)
+    db.flush()
+    assert p.fecha_renovacion == r_original
+
+    hoy_fijo(H + D(4))
+    tareas.avisos_prorroga(db, H + D(4))
+    db.refresh(p)
+    assert p.estado == "vencido" and db.get(Cliente, ctx["c"].id).estado == "activo"
+
+    hoy_fijo(H + D(5))
+    tareas.avisos_prorroga(db, H + D(5))
+    db.refresh(p)
+    assert p.estado == "archivado"
+    assert db.get(Cliente, ctx["c"].id).estado == "no_renovado"

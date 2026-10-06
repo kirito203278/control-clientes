@@ -134,3 +134,11 @@ CICLO_DIAS=30, TOLERANCIA_DIAS=3, PRORROGA_MAX_DIAS=15, AVISO_DIAS_ANTES_RENOVAC
 
 ### Cuándo aparece «Renovados sin pago»
 Con las reglas vigentes un paquete no renueva debiendo, así que esa columna solo se llena cuando, **después** de renovar, el ciclo cerrado se queda con saldo: porque el administrador corrigió el costo hacia arriba o porque se borró un pago mal capturado. Los datos de ejemplo traen un caso de cada uno (Mueblería Don Rafa y Barbería El Corte). El cliente que confirmó que renovará y aún no paga no sale ahí: está en amarillo, y pasa a «Vencidos sin decisión» cuando se le termina el contrato.
+
+## Prórroga activa: se trabaja normal (2026-10-06, aclaración del usuario)
+- Al activar la prórroga, **la fecha de renovación del paquete no se mueve**: queda la que tenía antes de pedirla, y el contrato nuevo arrancará en esa misma fecha (ya era así).
+- **Con la prórroga corriendo el cliente NO está bloqueado**: se le registran pagos, se edita su ficha y se trabaja con él como con cualquier otro. No hay nada que decidir mientras dure.
+- Lo único que pasa solo es que, **si al terminar su último día no pagó completo, el cliente pasa a No renovados**. El día del vencimiento todavía cuenta: el trabajo programado lo archiva en la siguiente corrida (00:05 del día siguiente), igual que el contrato que termina a las 23:59.
+- Ajustes para que la pantalla diga lo mismo que la regla:
+  · el semáforo de un paquete con prórroga activa es **amarillo** (ya decidió, falta el pago), no rojo;
+  · el tablero tiene una columna **«En prórroga»**; antes esos paquetes salían en «Vencidos sin decisión», que es justo lo contrario de lo que son.

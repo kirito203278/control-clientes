@@ -8,6 +8,7 @@ import { dinero, diasTexto, fecha } from '../../util'
 
 const COLUMNAS: { clave: keyof TableroT['columnas']; titulo: string; ayuda: string; color: string }[] = [
   { clave: 'por_vencer', titulo: 'Por vencer', ayuda: 'Renuevan en 4 días o menos', color: 'badge-yellow' },
+  { clave: 'en_prorroga', titulo: 'En prórroga', ayuda: 'Ya decidieron: se trabaja normal hasta que termine el plazo', color: 'badge-yellow' },
   { clave: 'vencidos', titulo: 'Vencidos sin decisión', ayuda: 'Llegó la fecha y falta decidir', color: 'badge-bad' },
   { clave: 'renovados_sin_pago', titulo: 'Renovados sin pago', ayuda: 'Renovó, pero se debe algo', color: 'badge-warn' },
   { clave: 'completos', titulo: 'Completos', ayuda: 'Renovados y pagados', color: 'badge-good' },

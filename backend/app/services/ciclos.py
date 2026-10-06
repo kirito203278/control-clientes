@@ -72,6 +72,8 @@ def estado_efectivo(p: PaqueteCliente, hoy: dt.date) -> str:
 
 
 def semaforo(p: PaqueteCliente, hoy: dt.date) -> str:
+    if prorroga_activa(p, hoy):
+        return "amarillo"
     if es_vencido(p, hoy):
         return "rojo"
     if p.estado in ("archivado", "eliminado"):
