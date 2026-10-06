@@ -19,8 +19,9 @@ def _hoy(hoy_fijo):
 @pytest.fixture
 def ctx(db, crear_usuario, fabrica, auth):
     ana = crear_usuario("ana.ruiz")
+    admin = crear_usuario("admin.jefe", rol="admin")
     c = fabrica.cliente(ana, "Cliente Ana")
-    return dict(ana=ana, c=c, h=auth(ana))
+    return dict(ana=ana, admin=admin, c=c, h=auth(admin), h_cm=auth(ana))
 
 
 def _pagado(p, monto=None):
@@ -246,7 +247,7 @@ def test_bloqueos_solo_muestra_la_cartera_del_cm(api, ctx, fabrica, crear_usuari
     fabrica.ciclo(ctx["c"], H - D(1))
     beto = crear_usuario("beto.luna")
     fabrica.ciclo(fabrica.cliente(beto, "Ajeno"), H - D(1))
-    assert len(api.get("/api/bloqueos", headers=ctx["h"]).json()) == 1
+    assert len(api.get("/api/bloqueos", headers=ctx["h_cm"]).json()) == 1
     assert len(api.get("/api/bloqueos", headers=auth(beto)).json()) == 1
     assert len(api.get("/api/bloqueos", headers=auth(crear_usuario("admin.demo", rol="admin"))).json()) == 2
 
@@ -415,7 +416,7 @@ def test_notificaciones_van_al_cm_y_si_esta_por_reasignar_a_los_admin(db, ctx, f
     fabrica.ciclo(huerfano, H + D(1), por=adm1)
     fabrica.ciclo(ctx["c"], H + D(1))
     tareas.avisos_renovacion(db, H)
-    assert sorted(n.usuario_id for n in db.scalars(select(Notificacion))) == sorted([ctx["ana"].id, adm1.id, adm2.id])
+    assert sorted(n.usuario_id for n in db.scalars(select(Notificacion))) == sorted([ctx["ana"].id, adm1.id, adm2.id, ctx["admin"].id])
 
 
 def test_cm_solo_ve_y_lee_sus_notificaciones(api, db, ctx, fabrica, crear_usuario, auth):
@@ -424,10 +425,10 @@ def test_cm_solo_ve_y_lee_sus_notificaciones(api, db, ctx, fabrica, crear_usuari
     tareas.avisos_renovacion(db, H)
     beto = auth(crear_usuario("beto.luna"))
     assert api.get("/api/notificaciones", headers=beto).json()["items"] == []
-    nid = api.get("/api/notificaciones", headers=ctx["h"]).json()["items"][0]["id"]
+    nid = api.get("/api/notificaciones", headers=ctx["h_cm"]).json()["items"][0]["id"]
     assert api.post(f"/api/notificaciones/{nid}/leer", headers=beto).status_code == 404
-    assert api.post(f"/api/notificaciones/{nid}/leer", headers=ctx["h"]).json()["leida"] is True
-    assert api.get("/api/notificaciones?solo_no_leidas=true", headers=ctx["h"]).json()["no_leidas"] == 0
+    assert api.post(f"/api/notificaciones/{nid}/leer", headers=ctx["h_cm"]).json()["leida"] is True
+    assert api.get("/api/notificaciones?solo_no_leidas=true", headers=ctx["h_cm"]).json()["no_leidas"] == 0
 
 
 def test_endpoint_de_jobs_exige_secreto(api, db, monkeypatch):
@@ -553,13 +554,13 @@ def test_tablero_cuatro_columnas(api, db, ctx, fabrica, crear_usuario, auth):
     fabrica.ciclo(c, H + D(2), estado="archivado", decision="no")
     otro = fabrica.cliente(crear_usuario("beto.luna"), "Ajeno")
     fabrica.ciclo(otro, H + D(2))
-    r = api.get("/api/renovaciones/tablero?anio=2026&mes=10&quincena=1", headers=ctx["h"]).json()
+    r = api.get("/api/renovaciones/tablero?anio=2026&mes=10&quincena=1", headers=ctx["h_cm"]).json()
     ids = {k: [t["id"] for t in v] for k, v in r["columnas"].items()}
     assert ids == {"por_vencer": [por_vencer.id], "vencidos": [vencido.id], "renovados_sin_pago": [sin_pago.id], "completos": [completo.id]}
     assert r["en_plazo"] == 1
     assert r["columnas"]["vencidos"][0]["arrastrado"] is True
     assert r["columnas"]["por_vencer"][0]["cliente_nombre"] == "Cliente Ana"
-    r2 = api.get("/api/renovaciones/tablero?anio=2026&mes=10&quincena=2", headers=ctx["h"]).json()
+    r2 = api.get("/api/renovaciones/tablero?anio=2026&mes=10&quincena=2", headers=ctx["h_cm"]).json()
     ids2 = {k: [t["id"] for t in v] for k, v in r2["columnas"].items()}
     assert vencido.id in ids2["vencidos"] and sin_pago.id in ids2["renovados_sin_pago"] and r2["en_plazo"] == 1
     adm = auth(crear_usuario("admin.demo", rol="admin"))
@@ -567,7 +568,7 @@ def test_tablero_cuatro_columnas(api, db, ctx, fabrica, crear_usuario, auth):
     assert sum(len(v) for v in todos["columnas"].values()) == 5 and todos["en_plazo"] == 1
     solo = api.get(f"/api/renovaciones/tablero?anio=2026&mes=10&quincena=1&cm_id={ctx['ana'].id}", headers=adm).json()
     assert sum(len(v) for v in solo["columnas"].values()) == 4
-    assert "Ajeno" not in api.get(f"/api/renovaciones/tablero?anio=2026&mes=10&quincena=1&cm_id={otro.cm_id}", headers=ctx["h"]).text
+    assert "Ajeno" not in api.get(f"/api/renovaciones/tablero?anio=2026&mes=10&quincena=1&cm_id={otro.cm_id}", headers=ctx["h_cm"]).text
 
 
 def test_caso1_no_contesta_pregunta_si_va_a_renovar_y_tiene_2_dias_o_pasa_a_no_renovados(api, db, ctx, fabrica, hoy_fijo):
@@ -730,3 +731,35 @@ def test_confirmar_sin_cambios_renueva_con_el_mismo_paquete_y_deshacer_borra_el_
 def test_el_plan_de_renovacion_valida_el_catalogo(api, ctx, fabrica):
     p = fabrica.ciclo(ctx["c"], H + D(5), costo=1000)
     assert api.post(f"/api/paquetes/{p.id}/confirmar-renovacion", headers=ctx["h"], json={"paquete_id": 999}).status_code == 422
+
+
+def test_el_cm_decide_si_renovo_o_no_pero_la_prorroga_la_activa_el_admin(api, db, ctx, fabrica):
+    p = fabrica.ciclo(ctx["c"], H - D(1), costo=1500, decision="si", pagos=[(500, H - D(2))], por=ctx["admin"])
+    assert api.get(f"/api/paquetes/{p.id}", headers=ctx["h"]).json()["opciones_bloqueo"] == ["prorroga", "no_renovo"]
+    assert api.post(f"/api/paquetes/{p.id}/prorroga", headers=ctx["h_cm"]).status_code == 403
+    db.refresh(p)
+    assert p.prorroga_hasta is None
+    assert api.post(f"/api/paquetes/{p.id}/prorroga", headers=ctx["h"]).status_code == 200
+    db.refresh(p)
+    assert p.prorroga_hasta == H + D(5)
+
+
+def test_el_cm_si_confirma_que_va_a_renovar_y_si_marca_que_no_renovo(api, db, ctx, fabrica):
+    p = fabrica.ciclo(ctx["c"], H - D(1), costo=1500)
+    r = api.post(f"/api/paquetes/{p.id}/confirmar-renovacion", headers=ctx["h_cm"])
+    assert r.status_code == 200 and r.json()["renovado_automaticamente"] is None
+    db.refresh(p)
+    assert p.renovacion_decision == "si" and p.confirmado_en == H
+
+    otro = fabrica.ciclo(fabrica.cliente(ctx["ana"], "Otro"), H - D(1), costo=1500)
+    r = api.post(f"/api/paquetes/{otro.id}/no-renovar", headers=ctx["h_cm"], json={"accion": "conservar"})
+    assert r.status_code == 200 and r.json()["cliente_a_no_renovados"] is True
+
+
+def test_el_cm_renueva_cuando_ya_esta_pagado_pero_no_elige_otro_paquete(api, db, ctx, fabrica):
+    p = fabrica.ciclo(ctx["c"], H - D(1), costo=1500, pagos=[(1500, H - D(2))], por=ctx["admin"])
+    r = api.post(f"/api/paquetes/{p.id}/confirmar-renovacion", headers=ctx["h_cm"],
+                 json={"paquete_id": 3, "tipo_id": 2, "costo": 4500})
+    assert r.status_code == 200 and r.json()["renovado_automaticamente"]
+    nuevo = db.get(PaqueteCliente, r.json()["renovado_automaticamente"])
+    assert nuevo.paquete_id == p.paquete_id and nuevo.costo == Decimal(1500)

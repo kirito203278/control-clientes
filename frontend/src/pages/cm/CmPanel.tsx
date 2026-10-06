@@ -1,41 +1,37 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api } from '../../api/client'
-import type { Bloqueo, ClienteListItem } from '../../api/types'
+import type { Bloqueo } from '../../api/types'
 import { useAuth } from '../../auth/AuthContext'
 import Logo from '../../components/Logo'
 import NotificationBell from '../../components/NotificationBell'
-import { Semaforo } from '../../components/ui'
 import { quincenaActual } from '../../util'
 import ClienteFicha from '../shared/ClienteFicha'
-import Ingresos from '../shared/Ingresos'
 import { AgregarClienteModal } from '../shared/modales'
 import NoRenovados from '../shared/NoRenovados'
-import Reportes from '../shared/Reportes'
 import Tablero from '../shared/Tablero'
+import CarteraCm from './CarteraCm'
 
-type Vista = { tipo: 'inicio' } | { tipo: 'cliente'; id: number; paquete: number | null } | { tipo: 'tablero' } | { tipo: 'ingresos' } | { tipo: 'no_renovados' } | { tipo: 'reportes' }
+type Vista = 'cartera' | 'tablero' | 'no_renovados'
+const NAV: [Vista, string][] = [['cartera', 'Mi cartera'], ['tablero', 'Renovaciones'], ['no_renovados', 'No renovados']]
 
 export default function CmPanel() {
   const { user, logout } = useAuth()
-  const [quincena, setQuincena] = useState<'1' | '2'>(quincenaActual())
-  const [clientes, setClientes] = useState<ClienteListItem[]>([])
-  const [vista, setVista] = useState<Vista>({ tipo: 'tablero' })
+  const [quincena, setQuincena] = useState<'1' | '2' | 'todas'>(quincenaActual())
+  const [vista, setVista] = useState<Vista>('cartera')
+  const [abierto, setAbierto] = useState<{ id: number; paquete: number | null } | null>(null)
   const [agregando, setAgregando] = useState(false)
-  const [busqueda, setBusqueda] = useState('')
-  const version = 0
+  const [recarga, setRecarga] = useState(0)
   const [pendientes, setPendientes] = useState<Bloqueo[]>([])
 
-  const cargar = useCallback(() => api.get<ClienteListItem[]>(`/clientes?quincena=${quincena}`).then(setClientes), [quincena])
   const cargarPendientes = useCallback(() => api.get<Bloqueo[]>('/bloqueos').then(setPendientes).catch(() => undefined), [])
-  useEffect(() => { cargar() }, [cargar])
   useEffect(() => {
     cargarPendientes()
     const t = setInterval(cargarPendientes, 60_000)
     return () => clearInterval(t)
-  }, [cargarPendientes, version])
+  }, [cargarPendientes, recarga])
 
-  const abrir = (id: number, paquete: number | null = null) => setVista({ tipo: 'cliente', id, paquete })
-  const visibles = clientes.filter((c) => c.nombre.toLowerCase().includes(busqueda.toLowerCase()))
+  const abrir = (id: number, paquete: number | null = null) => { setAbierto({ id, paquete }); setVista('cartera') }
+  const refrescar = () => { setRecarga((n) => n + 1); cargarPendientes() }
 
   return (
     <div className="cm-layout">
@@ -48,33 +44,12 @@ export default function CmPanel() {
           </div>
           <NotificationBell onAbrirPaquete={(c, p) => abrir(c, p)} />
         </div>
-
-        <div className="segmented full" style={{ marginBottom: 10 }} role="tablist" aria-label="Quincena">
-          <button className={quincena === '1' ? 'active' : ''} onClick={() => setQuincena('1')}>1ra quincena</button>
-          <button className={quincena === '2' ? 'active' : ''} onClick={() => setQuincena('2')}>2da quincena</button>
-        </div>
-        <button className="btn btn-primary" onClick={() => setAgregando(true)} style={{ marginBottom: 10, justifyContent: 'center' }}>+ Agregar cliente</button>
-        <input type="text" placeholder="Buscar cliente…" value={busqueda} onChange={(e) => setBusqueda(e.target.value)}
-          style={{ marginBottom: 8, background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)', color: 'white' }} />
-
         <div className="cm-sidebar-list">
-          {visibles.length === 0 && <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: 13, padding: '4px 8px' }}>
-            {clientes.length === 0 ? 'Sin clientes con renovación en esta quincena.' : 'Sin resultados.'}</p>}
-          {visibles.map((c) => (
-            <button key={c.id} className={`cm-sidebar-item ${vista.tipo === 'cliente' && vista.id === c.id ? 'active' : ''}`} onClick={() => abrir(c.id)}>
-              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.nombre}</span>
-              <span style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                {c.pendiente_decision && <span className="badge badge-bad" title="Contrato terminado: decide si renovó" style={{ padding: '0 6px' }}>decidir</span>}
-                {c.quincenas.length === 2 && <span className="badge badge-neutral" title="Tiene paquetes en ambas quincenas" style={{ padding: '0 6px' }}>1·2</span>}
-                <Semaforo valor={c.semaforo} /></span>
-            </button>))}
+          {NAV.map(([k, t]) => (
+            <button key={k} className={`cm-sidebar-item ${vista === k && !(k === 'cartera' && abierto) ? 'active' : ''}`}
+              onClick={() => { setVista(k); if (k === 'cartera') setAbierto(null) }}>{t}</button>))}
         </div>
-
-        <div className="cm-sidebar-nav">
-          {([['tablero', 'Renovaciones'], ['ingresos', 'Ingresos'], ['reportes', 'Reportes'], ['no_renovados', 'No renovados']] as const).map(([k, t]) => (
-            <button key={k} className={`cm-sidebar-item ${vista.tipo === k ? 'active' : ''}`} onClick={() => setVista({ tipo: k })}>{t}</button>))}
-          <button className="btn btn-ghost-dark" style={{ marginTop: 6 }} onClick={logout}>Cerrar sesión</button>
-        </div>
+        <button className="btn btn-ghost-dark" style={{ marginTop: 10 }} onClick={logout}>Cerrar sesión</button>
       </aside>
 
       <main className="cm-main">
@@ -85,15 +60,15 @@ export default function CmPanel() {
               {pendientes.map((b) => <button key={b.id} className="btn btn-secondary btn-sm" onClick={() => abrir(b.cliente_id, b.id)}>{b.cliente_nombre} · {b.paquete}</button>)}
             </div>
           </div>)}
-        {vista.tipo === 'cliente' && <ClienteFicha key={`${vista.id}-${version}`} clienteId={vista.id} paqueteInicial={vista.paquete} onChanged={() => { cargar(); cargarPendientes() }}
-          onDeleted={() => { cargar(); setVista({ tipo: 'tablero' }) }} />}
-        {vista.tipo === 'tablero' && <Tablero key={version} onAbrir={(c, p) => abrir(c, p)} />}
-        {vista.tipo === 'ingresos' && <Ingresos key={version} onAbrirCliente={(id) => abrir(id)} />}
-        {vista.tipo === 'reportes' && <Reportes />}
-        {vista.tipo === 'no_renovados' && <NoRenovados key={version} onAbrir={(id) => abrir(id)} onCambio={cargar} />}
+        {vista === 'cartera' && (abierto
+          ? <ClienteFicha key={abierto.id} clienteId={abierto.id} paqueteInicial={abierto.paquete} onChanged={refrescar}
+              onDeleted={() => { setAbierto(null); refrescar() }} onVolver={() => setAbierto(null)} />
+          : <CarteraCm quincena={quincena} setQuincena={setQuincena} onAbrir={(id) => abrir(id)} recarga={recarga} onAgregar={() => setAgregando(true)} />)}
+        {vista === 'tablero' && <Tablero key={recarga} onAbrir={(c, p) => abrir(c, p)} />}
+        {vista === 'no_renovados' && <NoRenovados key={recarga} onAbrir={(id) => abrir(id)} onCambio={refrescar} />}
       </main>
 
-      {agregando && <AgregarClienteModal onClose={() => setAgregando(false)} onHecho={(id) => { setAgregando(false); cargar(); abrir(id) }} />}
+      {agregando && <AgregarClienteModal onClose={() => setAgregando(false)} onHecho={(id) => { setAgregando(false); refrescar(); abrir(id) }} />}
     </div>
   )
 }

@@ -46,7 +46,13 @@ def sembrar(db: Session, credenciales_path: Path | None = CREDENCIALES_PATH) -> 
     H = hoy()
     ts_ahora = ahora()
     ciclo_dias = get_settings().ciclo_dias
-    paq = {p.nombre: p.id for p in db.scalars(select(CatalogoPaquete))}
+    costos_catalogo = {"Básico": 1500, "Estándar": 2500, "Élite": 4500, "Campaña": 6000}
+    paq = {}
+    for p in db.scalars(select(CatalogoPaquete)):
+        paq[p.nombre] = p.id
+        if p.nombre in costos_catalogo:
+            p.costo = Decimal(costos_catalogo[p.nombre])
+    db.flush()
     tipo = {t.nombre: t.id for t in db.scalars(select(CatalogoTipo))}
 
     lineas, users = [], {}

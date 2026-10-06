@@ -13,7 +13,7 @@ const BADGE_ESTADO: Record<string, string> = { activo: 'badge-neutral', por_venc
 export default function ClienteFicha({ clienteId, paqueteInicial, onChanged, onDeleted, onVolver }: {
   clienteId: number; paqueteInicial?: number | null; onChanged: () => void; onDeleted: () => void; onVolver?: () => void
 }) {
-  const { puedeEscribir, user } = useAuth()
+  const { puedeEscribir, user, esCm } = useAuth()
   const [ficha, setFicha] = useState<Ficha | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [paqueteId, setPaqueteId] = useState<number | null>(paqueteInicial ?? null)
@@ -66,11 +66,12 @@ export default function ClienteFicha({ clienteId, paqueteInicial, onChanged, onD
         <>
           <div className="section-title">Historial de ciclos y paquetes archivados</div>
           <div className="card table-scroll"><table className="data-table"><thead><tr>
-            <th>Paquete</th><th>Tipo</th><th>Vencía</th><th className="num">Costo</th><th className="num">Pagado</th><th>Estado</th><th></th></tr></thead><tbody>
+            <th>Paquete</th><th>Tipo</th><th>Vencía</th>{!esCm && <><th className="num">Costo</th><th className="num">Pagado</th></>}<th>Estado</th><th></th></tr></thead><tbody>
             {ficha.historial.map((p) => (
               <tr key={p.id} className="clickable-row" onClick={() => { setPaqueteId(p.id); window.scrollTo({ top: 0 }) }}>
-                <td>{p.paquete}</td><td>{p.tipo}</td><td>{fecha(p.fecha_renovacion)}</td><td className="num">{dinero(p.costo)}</td>
-                <td className="num">{dinero(p.pagado)}{p.restante > 0 && <span className="badge badge-bad" style={{ marginLeft: 6 }}>debe {dinero(p.restante)}</span>}</td>
+                <td>{p.paquete}</td><td>{p.tipo}</td><td>{fecha(p.fecha_renovacion)}</td>
+                {!esCm && <><td className="num">{dinero(p.costo)}</td>
+                <td className="num">{dinero(p.pagado)}{p.restante > 0 && <span className="badge badge-bad" style={{ marginLeft: 6 }}>debe {dinero(p.restante)}</span>}</td></>}
                 <td><span className={`badge ${BADGE_ESTADO[p.estado]}`}>{ESTADO_LABEL[p.estado]}</span></td>
                 <td><button className="btn btn-ghost btn-sm">Ver</button></td></tr>))}
           </tbody></table></div>
@@ -154,7 +155,7 @@ function Paquetes({ ficha, paqueteId, setPaqueteId, puedeEscribir, hayBloqueo, r
   ficha: Ficha; paqueteId: number | null; setPaqueteId: (id: number) => void; puedeEscribir: boolean; hayBloqueo: boolean
   recargar: (sel?: number | null) => Promise<void>; sinPaquetes: boolean; avisar: (t: string) => void; onClienteGone: () => void
 }) {
-  const { user } = useAuth()
+  const { user, esCm } = useAuth()
   const [det, setDet] = useState<PaqueteDetalle | null>(null)
   const [errorDet, setErrorDet] = useState<string | null>(null)
   const [modal, setModal] = useState<'no' | 'editar' | 'confirmar' | null>(null)
@@ -183,25 +184,28 @@ function Paquetes({ ficha, paqueteId, setPaqueteId, puedeEscribir, hayBloqueo, r
       <ErrorTexto texto={errorDet} />
       {det && (
         <>
-          {!vigente && <div className="callout callout-info">Estás viendo un ciclo del historial ({ESTADO_LABEL[det.estado].toLowerCase()}). {det.restante > 0 ? 'Aún tiene saldo por cobrar: puedes seguir registrando pagos.' : ''}</div>}
+          {!vigente && <div className="callout callout-info">Estás viendo un ciclo del historial ({ESTADO_LABEL[det.estado].toLowerCase()}). {!esCm && det.restante > 0 ? 'Aún tiene saldo por cobrar: puedes seguir registrando pagos.' : ''}</div>}
           <div className="kv" style={{ margin: '8px 0 14px' }}>
             <div><div className="k">Tipo</div><div className="v">{det.tipo}</div></div>
             <div><div className="k">Paquete</div><div className="v">{det.paquete}</div></div>
-            <div><div className="k">Costo</div><div className="v">{dinero(det.costo)}</div></div>
-            <div><div className="k">Pagado</div><div className="v" style={{ color: 'var(--good)' }}>{dinero(det.pagado)}</div></div>
-            <div><div className="k">Restante</div><div className="v" style={{ color: det.restante > 0 ? 'var(--warn)' : 'var(--good)' }}>{dinero(det.restante)}</div></div>
+            {!esCm && <>
+              <div><div className="k">Costo</div><div className="v">{dinero(det.costo)}</div></div>
+              <div><div className="k">Pagado</div><div className="v" style={{ color: 'var(--good)' }}>{dinero(det.pagado)}</div></div>
+              <div><div className="k">Restante</div><div className="v" style={{ color: det.restante > 0 ? 'var(--warn)' : 'var(--good)' }}>{dinero(det.restante)}</div></div>
+            </>}
             <div><div className="k">Fecha de renovación</div><div className="v">{fecha(det.fecha_renovacion)}</div></div>
             <div><div className="k">Renovaciones con este paquete</div><div className="v">{det.veces_renovado}</div></div>
             <div><div className="k">Estado</div><div className="v"><span className={`badge ${BADGE_ESTADO[det.estado_efectivo]}`}>{ESTADO_LABEL[det.estado_efectivo]}</span></div></div>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 6 }}>
-            <div style={{ flex: 1 }}><Progreso pct={det.avance_pct} /></div>
-            <strong style={{ fontSize: 13, minWidth: 120, textAlign: 'right' }}>{dinero(det.pagado)} de {dinero(det.costo)}</strong>
-          </div>
+          {!esCm && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 6 }}>
+              <div style={{ flex: 1 }}><Progreso pct={det.avance_pct} /></div>
+              <strong style={{ fontSize: 13, minWidth: 120, textAlign: 'right' }}>{dinero(det.pagado)} de {dinero(det.costo)}</strong>
+            </div>)}
           {escribe && vigente && <div style={{ textAlign: 'right' }}><button className="btn btn-ghost btn-sm" onClick={() => setModal('editar')}>Editar paquete</button></div>}
 
-          <Pagos det={det} puedeEscribir={escribe} alCambiar={cambio} avisar={avisar} />
-          <Prorroga det={det} />
+          {!esCm && <Pagos det={det} puedeEscribir={escribe} alCambiar={cambio} avisar={avisar} />}
+          <Prorroga det={det} sinMontos={esCm} />
 
           <div className="section-title">Renovación</div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
@@ -210,7 +214,7 @@ function Paquetes({ ficha, paqueteId, setPaqueteId, puedeEscribir, hayBloqueo, r
             {det.no_renovara && <span className="badge badge-neutral">Marcado: no renovará</span>}
             {!det.no_renovara && det.renovacion_decision !== 'pendiente' && <span className="badge badge-purple">Decisión: {det.renovacion_decision === 'si' ? 'renovó' : 'no renovó'}</span>}
           </div>
-          {det.prorroga_activa && <div className="callout callout-info">Con la prórroga activa no hay nada que decidir: <strong>en cuanto se pague lo que falta ({dinero(det.restante)}) el paquete se renueva solo</strong> (con el paquete que se eligió al confirmar). Si no se completa el {fecha(det.prorroga_hasta)}, el cliente pasa a No renovados.
+          {det.prorroga_activa && <div className="callout callout-info">Con la prórroga activa no hay nada que decidir: <strong>en cuanto se pague lo que falta{esCm ? '' : ` (${dinero(det.restante)})`} el paquete se renueva solo</strong> (con el paquete que se eligió al confirmar). Si no se completa el {fecha(det.prorroga_hasta)}, el cliente pasa a No renovados.
             <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>El nuevo contrato <strong>conserva la misma fecha de renovación</strong> ({fecha(det.fecha_renovacion)}); no se recorre al día en que termine de pagar.</div></div>}
           {vigente && det.estado_efectivo === 'por_vencer' && <div className="callout callout-warn">Este paquete renueva pronto: pregúntale al cliente si renueva.</div>}
           {det.no_renovara && (
@@ -218,10 +222,11 @@ function Paquetes({ ficha, paqueteId, setPaqueteId, puedeEscribir, hayBloqueo, r
               {escribe && <button className="btn btn-ghost btn-sm" style={{ marginLeft: 8 }} onClick={async () => { try { await api.post(`/paquetes/${det.id}/revertir-decision`); await cambio(); avisar('Marca deshecha') } catch (e) { avisar(msg(e, 'No se pudo deshacer')) } }}>Deshacer</button>}</div>)}
           {det.confirmo_renovacion && !det.prorroga_activa && (
             <div className="callout callout-warn">
-              <strong>Confirmó que renovará</strong> el {fecha(det.confirmado_en)}: ese día es el inicio del nuevo contrato.{det.restante > 0 ? <> Aún debe {dinero(det.restante)}; en cuanto pague completo el paquete se renueva solo.
+              <strong>Confirmó que renovará</strong> el {fecha(det.confirmado_en)}: ese día es el inicio del nuevo contrato.{esCm ? <> Si aún debe, en cuanto pague completo el paquete se renueva solo.
+                Si no ha pagado al terminar el día {det.gracia_hasta ? fecha(det.gracia_hasta) : fecha(det.fecha_renovacion)} a las 11:59 pm, se bloquea y el administrador decidirá la prórroga (sin tolerancia).</> : det.restante > 0 ? <> Aún debe {dinero(det.restante)}; en cuanto pague completo el paquete se renueva solo.
                 Si no ha pagado al terminar el día {det.gracia_hasta ? fecha(det.gracia_hasta) : fecha(det.fecha_renovacion)} a las 11:59 pm, se bloquea y se te preguntará por la prórroga (sin tolerancia).</> : ''}
-              <div style={{ fontSize: 13, marginTop: 4 }}>Renovará con: {det.renovara_con && (det.renovara_con.paquete_id !== det.paquete_id || det.renovara_con.tipo_id !== det.tipo_id || Number(det.renovara_con.costo) !== Number(det.costo))
-                ? <><strong>otro paquete ({dinero(det.renovara_con.costo)})</strong> — se aplica al concretarse la renovación</> : <strong>el mismo paquete ({dinero(det.costo)})</strong>}.</div>
+              <div style={{ fontSize: 13, marginTop: 4 }}>Renovará con: {det.renovara_con && (det.renovara_con.paquete_id !== det.paquete_id || det.renovara_con.tipo_id !== det.tipo_id || (!esCm && Number(det.renovara_con.costo) !== Number(det.costo)))
+                ? <><strong>otro paquete{esCm ? '' : ` (${dinero(det.renovara_con.costo)})`}</strong> — se aplica al concretarse la renovación</> : <strong>el mismo paquete{esCm ? '' : ` (${dinero(det.costo)})`}</strong>}.</div>
               {escribe && det.estado === 'activo' && !det.bloqueado && <button className="btn btn-ghost btn-sm" style={{ marginTop: 4 }} onClick={async () => { try { await api.post(`/paquetes/${det.id}/revertir-decision`); await cambio(); avisar('Confirmación deshecha') } catch (e) { avisar(msg(e, 'No se pudo deshacer')) } }}>Deshacer confirmación</button>}
             </div>)}
           {escribe && vigente && !det.no_renovara && !det.prorroga_activa && !det.bloqueado && (
@@ -229,7 +234,7 @@ function Paquetes({ ficha, paqueteId, setPaqueteId, puedeEscribir, hayBloqueo, r
               {!det.confirmo_renovacion && <button className="btn btn-primary" onClick={() => setModal('confirmar')}>Confirmó que renovará</button>}
               <button className="btn btn-secondary" onClick={() => setModal('no')}>No renovará</button>
             </div>)}
-          {det.restante > 0 && escribe && det.estado !== 'archivado' && (
+          {!esCm && det.restante > 0 && escribe && det.estado !== 'archivado' && (
             <div style={{ marginTop: 14 }}>
               <button className="btn btn-secondary btn-sm" onClick={async () => { try { setRecordatorio(await api.post<Recordatorio>(`/paquetes/${det.id}/recordatorio`)) } catch (e) { avisar(msg(e, 'No se pudo generar')) } }}>
                 Mensaje de pago para el cliente</button>
@@ -237,14 +242,14 @@ function Paquetes({ ficha, paqueteId, setPaqueteId, puedeEscribir, hayBloqueo, r
           {det.renovaciones.length > 0 && (
             <>
               <div className="section-title">Historial de renovaciones de este paquete</div>
-              <table className="data-table"><thead><tr><th>Fecha</th><th className="num">Costo anterior</th><th className="num">Costo nuevo</th><th>Cambio</th></tr></thead><tbody>
-                {det.renovaciones.map((r) => <tr key={r.id}><td>{fecha(r.fecha)}</td><td className="num">{dinero(r.costo_anterior)}</td><td className="num">{dinero(r.costo_nuevo)}</td>
+              <table className="data-table"><thead><tr><th>Fecha</th>{!esCm && <><th className="num">Costo anterior</th><th className="num">Costo nuevo</th></>}<th>Cambio</th></tr></thead><tbody>
+                {det.renovaciones.map((r) => <tr key={r.id}><td>{fecha(r.fecha)}</td>{!esCm && <><td className="num">{dinero(r.costo_anterior)}</td><td className="num">{dinero(r.costo_nuevo)}</td></>}
                   <td>{r.paquete_anterior_id === r.paquete_nuevo_id ? 'Mismo paquete' : 'Cambió de paquete'}</td></tr>)}
               </tbody></table>
             </>)}
           <p className="muted" style={{ fontSize: 12, marginTop: 14 }}>Semáforo: {SEMAFORO_LABEL[det.semaforo]}. Ciclo del {fecha(det.fecha_inicio)} al {fecha(det.fecha_renovacion)}.</p>
 
-          {modal === 'confirmar' && <ConfirmarRenovacionModal p={det as Paquete} onClose={() => setModal(null)} onHecho={(r) => { setModal(null); cambio(r.renovado_automaticamente); avisar(r.renovado_automaticamente ? 'Pagado y confirmado: se renovó' : 'Confirmado: falta el pago para renovar') }} />}
+          {modal === 'confirmar' && <ConfirmarRenovacionModal p={det as Paquete} sinMontos={esCm} onClose={() => setModal(null)} onHecho={(r) => { setModal(null); cambio(r.renovado_automaticamente); avisar(r.renovado_automaticamente ? 'Pagado y confirmado: se renovó' : 'Confirmado: falta el pago para renovar') }} />}
           {modal === 'editar' && <EditarPaqueteModal p={det as Paquete} esAdmin={user?.rol === 'admin'} onClose={() => setModal(null)} onHecho={() => { setModal(null); cambio(); avisar('Paquete actualizado') }} />}
           {modal === 'no' && <NoRenovarModal p={det as Paquete} nombreCliente={ficha.nombre} onClose={() => setModal(null)}
             onHecho={(r) => { setModal(null); if (r.cliente_eliminado) onClienteGone(); else { cambio(); avisar(r.cliente_a_no_renovados ? 'El cliente pasó a No renovados' : 'Paquete actualizado') } }} />}
@@ -298,10 +303,12 @@ function Pagos({ det, puedeEscribir, alCambiar, avisar }: { det: PaqueteDetalle;
 }
 
 function VentanaDecision({ p, ficha, onHecho, avisar }: { p: Paquete; ficha: Ficha; onHecho: (sel?: number | null) => void; avisar: (t: string) => void }) {
+  const { esCm } = useAuth()
   const [modal, setModal] = useState<'no' | 'va' | null>(null)
   const [trabajando, setTrabajando] = useState(false)
   const op = p.opciones_bloqueo
   const confirmado = p.renovacion_decision === 'si'
+  const puedeProrroga = op.includes('prorroga') && !esCm
 
   async function llamar(f: () => Promise<void>) {
     setTrabajando(true)
@@ -315,36 +322,46 @@ function VentanaDecision({ p, ficha, onHecho, avisar }: { p: Paquete; ficha: Fic
       <p style={{ margin: '8px 0 4px' }}>
         {op.includes('va_a_renovar') && <>Aún no hay respuesta del cliente. <strong>¿Va a renovar o no?</strong></>}
         {op.includes('renovo') && <>El paquete está pagado por completo. <strong>¿Renovó?</strong></>}
-        {op.includes('prorroga') && <>Confirmó que renovará pero <strong>aún debe {dinero(p.restante)}</strong>. <strong>¿Solicita prórroga o no renovó?</strong></>}
-        {!op.includes('prorroga') && confirmado && op.includes('no_renovo') && !op.includes('renovo') && <>Ya usó su prórroga y sigue debiendo {dinero(p.restante)}.</>}
+        {op.includes('prorroga') && (esCm
+          ? <>Confirmó que renovará pero <strong>quedó bloqueado por falta de pago</strong>. La prórroga la autoriza el administrador.</>
+          : <>Confirmó que renovará pero <strong>aún debe {dinero(p.restante)}</strong>. <strong>¿Solicita prórroga o no renovó?</strong></>)}
+        {!op.includes('prorroga') && confirmado && op.includes('no_renovo') && !op.includes('renovo') &&
+          (esCm ? <>Ya usó su prórroga y sigue sin pagarse completo.</> : <>Ya usó su prórroga y sigue debiendo {dinero(p.restante)}.</>)}
       </p>
       <p className="muted" style={{ margin: '0 0 12px', fontSize: 13 }}>
-        Este cliente queda en pausa hasta que lo resuelvas; <strong>con los demás clientes sigues trabajando normal</strong>.
-        {p.limite_decision && <> Si no decides, el {fecha(sumarDias(p.limite_decision, 1))} pasa automáticamente a No renovados.</>}
+        Este cliente queda en pausa hasta que se resuelva; <strong>con los demás clientes sigues trabajando normal</strong>.
+        {p.limite_decision && <> Si no se decide, el {fecha(sumarDias(p.limite_decision, 1))} pasa automáticamente a No renovados.</>}
       </p>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         {op.includes('va_a_renovar') && <button className="btn btn-primary" disabled={trabajando} onClick={() => setModal('va')}>Sí, va a renovar</button>}
         {op.includes('renovo') && <button className="btn btn-primary" disabled={trabajando} onClick={() => setModal('va')}>Renovó</button>}
-        {op.includes('prorroga') && <button className="btn btn-primary" disabled={trabajando} onClick={prorroga}>Solicitó prórroga (5 días)</button>}
+        {puedeProrroga && <button className="btn btn-primary" disabled={trabajando} onClick={prorroga}>Solicitó prórroga (5 días)</button>}
         {op.includes('no_renovo') && <button className="btn btn-secondary" disabled={trabajando} onClick={() => setModal('no')}>No renovó</button>}
       </div>
-      {op.includes('va_a_renovar') && <p className="muted" style={{ fontSize: 12, margin: '10px 0 0' }}>«Sí, va a renovar» marca <strong>hoy ({fecha(hoyIso())})</strong> como el inicio del nuevo contrato y habilita las funciones de este cliente el resto del día. No hay tolerancia de pago: a las 11:59 pm, si no ha pagado, se te preguntará por la prórroga o si no renovó.</p>}
-      {op.includes('prorroga') && <p className="muted" style={{ fontSize: 12, margin: '10px 0 0' }}>La prórroga dura 5 días naturales desde hoy (la fecha es automática). En ese plazo se acepta el pago parcial o el resto y, al completarlo, el paquete se renueva solo.</p>}
-      {modal === 'va' && <ConfirmarRenovacionModal p={p} onClose={() => setModal(null)} onHecho={(r) => { setModal(null); avisar(r.renovado_automaticamente ? 'Renovado' : 'Confirmado: se habilitan las funciones de este cliente'); onHecho(r.renovado_automaticamente) }} />}
+      {op.includes('va_a_renovar') && <p className="muted" style={{ fontSize: 12, margin: '10px 0 0' }}>«Sí, va a renovar» marca <strong>hoy ({fecha(hoyIso())})</strong> como el inicio del nuevo contrato y habilita las funciones de este cliente el resto del día. No hay tolerancia de pago: a las 11:59 pm, si no ha pagado, {esCm ? 'el administrador decidirá la prórroga' : 'se te preguntará por la prórroga'} o si no renovó.</p>}
+      {op.includes('prorroga') && (esCm
+        ? <p className="muted" style={{ fontSize: 12, margin: '10px 0 0' }}>Avísale al administrador: solo él puede activar la prórroga de 5 días y registrar el pago. Mientras tanto, tú puedes marcar que no renovó.</p>
+        : <p className="muted" style={{ fontSize: 12, margin: '10px 0 0' }}>La prórroga dura 5 días naturales desde hoy (la fecha es automática). En ese plazo se acepta el pago parcial o el resto y, al completarlo, el paquete se renueva solo.</p>)}
+      {modal === 'va' && <ConfirmarRenovacionModal p={p} sinMontos={esCm} onClose={() => setModal(null)} onHecho={(r) => { setModal(null); avisar(r.renovado_automaticamente ? 'Renovado' : 'Confirmado: se habilitan las funciones de este cliente'); onHecho(r.renovado_automaticamente) }} />}
       {modal === 'no' && <NoRenovarModal p={p} nombreCliente={ficha.nombre} onClose={() => setModal(null)}
         onHecho={() => { setModal(null); avisar('Pasó a No renovados'); onHecho() }} />}
     </div>
   )
 }
 
-function Prorroga({ det }: { det: PaqueteDetalle }) {
+function Prorroga({ det, sinMontos }: { det: PaqueteDetalle; sinMontos: boolean }) {
   if (!det.prorroga_hasta) return null
+  const pagado = sinMontos ? det.semaforo === 'verde' : det.restante <= 0
   return (
     <>
       <div className="section-title">Prórroga</div>
-      <div className={`callout ${det.restante <= 0 ? 'callout-good' : det.prorroga_vencida ? 'callout-bad' : 'callout-warn'}`}>
+      <div className={`callout ${pagado ? 'callout-good' : det.prorroga_vencida ? 'callout-bad' : 'callout-warn'}`}>
         Prórroga de 5 días naturales activada el {fecha(det.prorroga_registrada_en)}, válida hasta el <strong>{fecha(det.prorroga_hasta)}</strong>.{' '}
-        {det.restante <= 0 ? 'Ya se pagó completo.'
+        {sinMontos
+          ? (pagado ? 'Ya se pagó completo.'
+            : det.prorroga_vencida ? 'Venció sin pagarse completo: el cliente pasa a No renovados.'
+            : `${diasTexto(det.prorroga_dias_restantes ?? 0)}. El administrador registra los pagos; al completarse, el paquete se renueva solo.`)
+          : det.restante <= 0 ? 'Ya se pagó completo.'
           : det.prorroga_vencida ? `Venció con ${dinero(det.restante)} sin pagar: el cliente pasa a No renovados.`
           : `${diasTexto(det.prorroga_dias_restantes ?? 0)}. En este plazo se acepta el pago parcial o el resto (${dinero(det.restante)}); si no se completa, el cliente pasa solo a No renovados. Al pagar todo, se renueva automáticamente.`}
       </div>

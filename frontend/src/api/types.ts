@@ -41,7 +41,7 @@ export interface ClienteFicha {
   telefono: string | null; observaciones: string | null
   paquetes: Paquete[]; historial: Paquete[]; no_renovado_desde: string | null
 }
-export interface CatalogoItem { id: number; nombre: string; orden: number; activo: boolean }
+export interface CatalogoItem { id: number; nombre: string; orden: number; activo: boolean; costo?: number }
 
 export interface Recordatorio {
   id: number; paquete_id: number; texto: string; wa_url: string | null; telefono: string | null

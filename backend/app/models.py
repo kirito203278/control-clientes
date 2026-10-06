@@ -30,6 +30,7 @@ class CatalogoPaquete(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     nombre: Mapped[str] = mapped_column(Text, unique=True)
     orden: Mapped[int] = mapped_column(Integer, default=0)
+    costo: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=Decimal("0"))
     activo: Mapped[bool] = mapped_column(Boolean, default=True)
 
 

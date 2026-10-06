@@ -13,7 +13,7 @@ from app.dates import hoy as hoy_mx
 from app.deps import get_current_user, require_admin_write, require_writer
 from app.models import (ArchivoNoRenovado, CatalogoPaquete, CatalogoTipo, Cliente, PaqueteCliente, Usuario)
 from app.security.crypto import decrypt_value, encrypt_value
-from app.services import bloqueo, ciclos
+from app.services import bloqueo, ciclos, visibilidad
 from app.services.scope import clientes_q, obtener_cliente
 
 router = APIRouter(prefix="/api/clientes", tags=["clientes"])
@@ -22,7 +22,7 @@ router = APIRouter(prefix="/api/clientes", tags=["clientes"])
 class PaqueteNuevo(BaseModel):
     paquete_id: int
     tipo_id: int
-    costo: Decimal = Field(ge=0, max_digits=10, decimal_places=2)
+    costo: Decimal | None = Field(default=None, ge=0, max_digits=10, decimal_places=2)
     fecha_inicio: dt.date | None = None
 
 
@@ -62,10 +62,17 @@ def tipo_id_ok(datos: PaqueteNuevo) -> int:
     return datos.tipo_id
 
 
-def crear_ciclo(db: Session, cliente: Cliente, datos: PaqueteNuevo) -> PaqueteCliente:
+def costo_de_alta(db: Session, user: Usuario, datos: PaqueteNuevo) -> Decimal:
+    if user.rol == "admin" and datos.costo is not None:
+        return datos.costo
+    return db.get(CatalogoPaquete, datos.paquete_id).costo
+
+
+def crear_ciclo(db: Session, cliente: Cliente, datos: PaqueteNuevo, user: Usuario) -> PaqueteCliente:
     validar_catalogos(db, datos.paquete_id, datos.tipo_id)
     inicio = datos.fecha_inicio or hoy_mx()
-    p = PaqueteCliente(cliente_id=cliente.id, paquete_id=datos.paquete_id, tipo_id=tipo_id_ok(datos), costo=datos.costo,
+    p = PaqueteCliente(cliente_id=cliente.id, paquete_id=datos.paquete_id, tipo_id=tipo_id_ok(datos),
+                       costo=costo_de_alta(db, user, datos),
                        fecha_inicio=inicio, fecha_renovacion=inicio + dt.timedelta(days=get_settings().ciclo_dias))
     db.add(p)
     db.flush()
@@ -132,14 +139,14 @@ def crear(datos: ClienteIn, db: Session = Depends(get_db), user: Usuario = Depen
     db.add(c)
     db.flush()
     for pq in datos.paquetes:
-        crear_ciclo(db, c, pq)
+        crear_ciclo(db, c, pq, user)
     if user.rol == "admin":
         bitacora.registrar(db, user, "alta_cliente_admin", {"cliente_id": c.id, "cm_id": cm_id})
     db.commit()
     return {"id": c.id}
 
 
-def ficha_out(c: Cliente, hoy: dt.date, db: Session) -> dict:
+def ficha_out(c: Cliente, hoy: dt.date, db: Session, user: Usuario | None = None) -> dict:
     ordenados = sorted(c.paquetes, key=lambda p: (p.fecha_renovacion, p.id), reverse=True)
     vigentes = [ciclos.paquete_out(p, hoy) for p in sorted(c.paquetes, key=lambda p: p.fecha_renovacion)
                 if p.estado in ciclos.VIGENTES]
@@ -151,14 +158,15 @@ def ficha_out(c: Cliente, hoy: dt.date, db: Session) -> dict:
             "correo_fb": decrypt_value(c.correo_fb_enc) if c.correo_fb_enc else None,
             "tiene_password_fb": bool(c.password_fb_enc),
             "correo_contacto": c.correo_contacto, "telefono": c.telefono, "observaciones": c.observaciones,
-            "paquetes": vigentes, "historial": historial,
+            "paquetes": vigentes if user is None else visibilidad.paquetes_visibles(vigentes, user),
+            "historial": historial if user is None else visibilidad.paquetes_visibles(historial, user),
             "no_renovado_desde": archivo.archivado_en if archivo else None}
 
 
 @router.get("/{cliente_id}")
 def ficha(cliente_id: int, db: Session = Depends(get_db), user: Usuario = Depends(get_current_user)):
     c = obtener_cliente(db, user, cliente_id)
-    return ficha_out(c, hoy_mx(), db)
+    return ficha_out(c, hoy_mx(), db, user)
 
 
 @router.patch("/{cliente_id}")
@@ -179,7 +187,7 @@ def editar(cliente_id: int, datos: ClientePatch, db: Session = Depends(get_db),
     if user.rol == "admin":
         bitacora.registrar(db, user, "editar_cliente_admin", {"cliente_id": c.id, "campos": sorted(campos)})
     db.commit()
-    return ficha_out(c, hoy_mx(), db)
+    return ficha_out(c, hoy_mx(), db, user)
 
 
 @router.post("/{cliente_id}/password-fb/ver")

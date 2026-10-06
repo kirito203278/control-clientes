@@ -113,3 +113,13 @@ CICLO_DIAS=30, TOLERANCIA_DIAS=3, PRORROGA_MAX_DIAS=15, AVISO_DIAS_ANTES_RENOVAC
 - **Cambiar de paquete solo al renovar:** se elige al confirmar «va a renovar» (mismo paquete u otro con su tipo y costo; se guarda como plan y se aplica al concretarse la renovación) o en «Renovó». Fuera de la renovación NO se editan paquete/tipo/costo: un CM solo corrige la fecha de inicio; un admin con escritura puede corregir capturas erróneas (bitácora).
 - Quien no paga (venció la prórroga) o no pidió prórroga pasa a No renovados: sin cambios.
 - BD: migración 006 (`renovara_paquete_id`, `renovara_tipo_id`, `renovara_costo`).
+
+## Separación CM / administrador (2026-10-06, reemplaza a lo anterior donde choque)
+- **El dinero es del administrador.** El CM ya no ve ni escribe ningún monto: costo, pagado, restante, avance y la lista de pagos se omiten en la API para un usuario con rol `cm` (`app/services/visibilidad.py`), no solo en la interfaz.
+- **Solo admin (403 para el CM):** registrar y borrar pagos, activar la prórroga, generar y marcar el mensaje de cobro, Ingresos y Reportes (`/api/ingresos`, `/api/reportes/*`).
+  Desaparece la regla anterior de que un CM borraba sus propios pagos el mismo día: ahora ningún CM borra pagos y el administrador borra cualquiera.
+- **El CM decide renovación, no dinero.** En la ventana de bloqueo el CM ve «Sí, va a renovar» / «Renovó» / «No renovó»; el botón de prórroga solo lo ve el administrador. Si el único camino era la prórroga, al CM se le dice que la autoriza el administrador y le queda «No renovó».
+- **Cambio de paquete al renovar:** lo elige el administrador. Si confirma un CM, se ignoran `paquete_id`, `tipo_id` y `costo`: renueva con el mismo paquete.
+- **Costo en el catálogo de paquetes** (migración 007, columna `catalogo_paquetes.costo`). Cuando un CM da de alta un cliente o un paquete, el costo sale del catálogo y lo pagado empieza en cero; el administrador ajusta el costo en Catálogos o en la ficha del cliente. Un administrador sí puede fijar el costo al dar de alta.
+- **Panel del CM:** Mi cartera (tabla con el mismo formato que la cartera del admin, con filtro Todos / 1ra quincena / 2da quincena y buscador), Renovaciones y No renovados. Se quitaron Ingresos y Reportes, y la lista de clientes salió de la barra lateral.
+- Sin cambios: aislamiento por CM, bloqueo por fecha, 5 días de prórroga, 2 días para decidir, el resto de [S03].

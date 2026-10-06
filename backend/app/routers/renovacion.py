@@ -8,10 +8,10 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.database import get_db
 from app.dates import hoy as hoy_mx
-from app.deps import get_current_user, require_writer
+from app.deps import get_current_user, require_admin_write, require_writer
 from app.models import Cliente, PaqueteCliente, Usuario
 from app.routers.clientes import ficha_out
-from app.services import bloqueo as bloqueo_svc, ciclos, renovacion
+from app.services import bloqueo as bloqueo_svc, ciclos, renovacion, visibilidad
 from app.services.periodos import construir_periodo, quincena_de
 from app.services.scope import obtener_cliente, obtener_paquete, paquetes_q
 
@@ -44,8 +44,9 @@ def renovar(paquete_id: int, datos: RenovarIn, db: Session = Depends(get_db), us
     db.commit()
     db.refresh(p), db.refresh(nuevo)
     hoy = hoy_mx()
-    return {"anterior": ciclos.paquete_out(p, hoy),
-            "nuevo": {**ciclos.paquete_out(nuevo, hoy), "veces_renovado": ciclos.veces_renovado(db, nuevo)}}
+    return {"anterior": visibilidad.paquete_visible(ciclos.paquete_out(p, hoy), user),
+            "nuevo": {**visibilidad.paquete_visible(ciclos.paquete_out(nuevo, hoy), user),
+                      "veces_renovado": ciclos.veces_renovado(db, nuevo)}}
 
 
 @router.post("/paquetes/{paquete_id}/no-renovar")
@@ -64,7 +65,7 @@ def revertir(paquete_id: int, db: Session = Depends(get_db), user: Usuario = Dep
     renovacion.revertir_decision(db, user, p)
     db.commit()
     db.refresh(p)
-    return ciclos.paquete_out(p, hoy_mx())
+    return visibilidad.paquete_visible(ciclos.paquete_out(p, hoy_mx()), user)
 
 
 @router.post("/paquetes/{paquete_id}/confirmar-renovacion")
@@ -72,19 +73,21 @@ def confirmar_renovacion(paquete_id: int, datos: RenovarIn | None = None, db: Se
                          user: Usuario = Depends(require_writer)):
     p = obtener_paquete(db, user, paquete_id)
     datos = datos or RenovarIn()
+    if user.rol != "admin":
+        datos = RenovarIn()
     nuevo = renovacion.confirmar_renovacion(db, user, p, paquete_id=datos.paquete_id, tipo_id=datos.tipo_id, costo=datos.costo)
     db.commit()
     db.refresh(p)
     hoy = hoy_mx()
-    return {"paquete": ciclos.paquete_out(p, hoy),
+    return {"paquete": visibilidad.paquete_visible(ciclos.paquete_out(p, hoy), user),
             "renovado_automaticamente": nuevo.id if nuevo else None}
 
 
 @router.get("/bloqueos")
 def bloqueos(db: Session = Depends(get_db), user: Usuario = Depends(get_current_user)):
     hoy = hoy_mx()
-    return [{**ciclos.paquete_out(p, hoy), "cliente_nombre": p.cliente.nombre, "cm_id": p.cliente.cm_id}
-            for p in bloqueo_svc.bloqueos_visibles(db, user, hoy)]
+    return [{**visibilidad.paquete_visible(ciclos.paquete_out(p, hoy), user), "cliente_nombre": p.cliente.nombre,
+             "cm_id": p.cliente.cm_id} for p in bloqueo_svc.bloqueos_visibles(db, user, hoy)]
 
 
 @router.post("/clientes/{cliente_id}/reingreso")
@@ -95,7 +98,7 @@ def reingreso(cliente_id: int, datos: ReingresoIn, db: Session = Depends(get_db)
                           costo=datos.costo)
     db.commit()
     db.refresh(c)
-    return ficha_out(c, hoy_mx(), db)
+    return ficha_out(c, hoy_mx(), db, user)
 
 
 @router.get("/clientes/{cliente_id}/reingreso-info")
@@ -115,8 +118,9 @@ def reingreso_info(cliente_id: int, db: Session = Depends(get_db), user: Usuario
             "se_elimina_el": restar_meses(a.archivado_en, -s.purga_meses).date()}
 
 
-def _tarjeta(p: PaqueteCliente, hoy: dt.date, cms: dict[int, str], desde: dt.date) -> dict:
-    return {**ciclos.paquete_out(p, hoy), "cliente_nombre": p.cliente.nombre, "cm_id": p.cliente.cm_id,
+def _tarjeta(p: PaqueteCliente, hoy: dt.date, cms: dict[int, str], desde: dt.date, user: Usuario) -> dict:
+    return {**visibilidad.paquete_visible(ciclos.paquete_out(p, hoy), user),
+            "cliente_nombre": p.cliente.nombre, "cm_id": p.cliente.cm_id,
             "cm_nombre": cms.get(p.cliente.cm_id) if p.cliente.cm_id else None,
             "arrastrado": p.fecha_renovacion < desde}
 
@@ -143,15 +147,15 @@ def tablero(anio: int | None = None, mes: int | None = None, quincena: str | Non
         en_periodo = p.fecha_renovacion >= per.desde
         pagado = ciclos.pagado_hasta(p) >= p.costo
         if ciclos.es_vencido(p, hoy):
-            cols["vencidos"].append(_tarjeta(p, hoy, cms, per.desde))
+            cols["vencidos"].append(_tarjeta(p, hoy, cms, per.desde, user))
         elif p.estado == "renovado" and not pagado:
-            cols["renovados_sin_pago"].append(_tarjeta(p, hoy, cms, per.desde))
+            cols["renovados_sin_pago"].append(_tarjeta(p, hoy, cms, per.desde, user))
         elif not en_periodo:
             continue
         elif p.estado == "renovado" and pagado:
-            cols["completos"].append(_tarjeta(p, hoy, cms, per.desde))
+            cols["completos"].append(_tarjeta(p, hoy, cms, per.desde, user))
         elif ciclos.estado_efectivo(p, hoy) == "por_vencer":
-            cols["por_vencer"].append(_tarjeta(p, hoy, cms, per.desde))
+            cols["por_vencer"].append(_tarjeta(p, hoy, cms, per.desde, user))
         else:
             en_plazo += 1
     return {"periodo": {"anio": per.anio, "mes": per.mes, "quincena": per.quincena, "desde": per.desde,

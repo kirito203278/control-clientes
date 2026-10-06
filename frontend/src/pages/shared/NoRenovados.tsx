@@ -41,6 +41,7 @@ export default function NoRenovados({ onAbrir, onCambio }: { onAbrir: (id: numbe
 }
 
 function Reingreso({ c, info, onClose, onHecho }: { c: ClienteListItem; info: Info; onClose: () => void; onHecho: () => void }) {
+  const { esCm } = useAuth()
   const cat = useCatalogos()
   const [modo, setModo] = useState<'continuar' | 'nuevo'>(info.forzar_nuevo ? 'nuevo' : 'continuar')
   const [pq, setPq] = useState(paqueteVacio())
@@ -48,7 +49,7 @@ function Reingreso({ c, info, onClose, onHecho }: { c: ClienteListItem; info: In
   async function enviar() {
     setError(null)
     try {
-      await api.post<ClienteFicha>(`/clientes/${c.id}/reingreso`, modo === 'continuar' ? { modo } : { modo, ...paqueteBody(pq) })
+      await api.post<ClienteFicha>(`/clientes/${c.id}/reingreso`, modo === 'continuar' ? { modo } : { modo, ...paqueteBody(pq, esCm) })
       onHecho()
     } catch (e) { setError(e instanceof ApiError ? e.message : 'No se pudo reingresar') }
   }
@@ -63,13 +64,13 @@ function Reingreso({ c, info, onClose, onHecho }: { c: ClienteListItem; info: In
           <button className={modo === 'nuevo' ? 'active' : ''} onClick={() => setModo('nuevo')}>Crear paquete nuevo</button>
         </div>)}
       {modo === 'continuar' ? (
-        <div className="callout callout-info">Mismo paquete, tipo y costo. El ciclo empieza <strong>hoy ({fecha(hoyIso())})</strong> y renueva el <strong>{fecha(sumarDias(hoyIso(), 30))}</strong>; el historial se conserva.</div>
-      ) : <CamposPaquete v={pq} set={setPq} {...cat} />}
+        <div className="callout callout-info">Mismo paquete y tipo. El ciclo empieza <strong>hoy ({fecha(hoyIso())})</strong> y renueva el <strong>{fecha(sumarDias(hoyIso(), 30))}</strong>; el historial se conserva.</div>
+      ) : <CamposPaquete v={pq} set={setPq} {...cat} sinCosto={esCm} />}
       {modo === 'nuevo' && <p className="muted" style={{ fontSize: 13 }}>Se usa como inicio la fecha de hoy; la renovación se calcula a los 30 días.{!info.forzar_nuevo && ' El historial anterior se conserva.'}</p>}
       <ErrorTexto texto={error} />
       <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 12 }}>
         <button className="btn btn-secondary" onClick={onClose}>Cancelar</button>
-        <button className="btn btn-primary" onClick={enviar} disabled={modo === 'nuevo' && !paqueteCompleto(pq)}>Reingresar cliente</button>
+        <button className="btn btn-primary" onClick={enviar} disabled={modo === 'nuevo' && !paqueteCompleto(pq, esCm)}>Reingresar cliente</button>
       </div>
     </Modal>
   )

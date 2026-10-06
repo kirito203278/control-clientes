@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
@@ -16,12 +18,14 @@ TABLAS = {"paquetes": CatalogoPaquete, "tipos": CatalogoTipo}
 class ItemIn(BaseModel):
     nombre: str = Field(min_length=1, max_length=60)
     orden: int | None = None
+    costo: Decimal | None = Field(default=None, ge=0, max_digits=10, decimal_places=2)
 
 
 class ItemPatch(BaseModel):
     nombre: str | None = Field(default=None, min_length=1, max_length=60)
     orden: int | None = None
     activo: bool | None = None
+    costo: Decimal | None = Field(default=None, ge=0, max_digits=10, decimal_places=2)
 
 
 def _modelo(tabla: str):
@@ -31,7 +35,17 @@ def _modelo(tabla: str):
 
 
 def _out(i) -> dict:
-    return {"id": i.id, "nombre": i.nombre, "orden": i.orden, "activo": i.activo}
+    datos = {"id": i.id, "nombre": i.nombre, "orden": i.orden, "activo": i.activo}
+    if isinstance(i, CatalogoPaquete):
+        datos["costo"] = i.costo
+    return datos
+
+
+def _log(i) -> dict:
+    d = _out(i)
+    if "costo" in d:
+        d["costo"] = str(d["costo"])
+    return d
 
 
 @router.get("/{tabla}")
@@ -48,6 +62,8 @@ def crear(tabla: str, datos: ItemIn, db: Session = Depends(get_db), admin: Usuar
     M = _modelo(tabla)
     orden = datos.orden if datos.orden is not None else (db.scalar(select(func.coalesce(func.max(M.orden), 0))) + 1)
     item = M(nombre=datos.nombre.strip(), orden=orden)
+    if M is CatalogoPaquete and datos.costo is not None:
+        item.costo = datos.costo
     db.add(item)
     try:
         db.flush()
@@ -66,8 +82,11 @@ def editar(tabla: str, item_id: int, datos: ItemPatch, db: Session = Depends(get
     item = db.get(M, item_id)
     if item is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Elemento no encontrado")
-    antes = _out(item)
-    for campo, valor in datos.model_dump(exclude_none=True).items():
+    antes = _log(item)
+    campos = datos.model_dump(exclude_none=True)
+    if M is not CatalogoPaquete:
+        campos.pop("costo", None)
+    for campo, valor in campos.items():
         setattr(item, campo, valor.strip() if isinstance(valor, str) else valor)
     try:
         db.flush()
@@ -75,6 +94,6 @@ def editar(tabla: str, item_id: int, datos: ItemPatch, db: Session = Depends(get
         db.rollback()
         raise HTTPException(status.HTTP_409_CONFLICT, "Ya existe un elemento con ese nombre")
     bitacora.registrar(db, admin, "editar_catalogo", {"catalogo": tabla, "accion": "edicion", "antes": antes,
-                                                      "despues": _out(item)})
+                                                      "despues": _log(item)})
     db.commit()
     return _out(item)

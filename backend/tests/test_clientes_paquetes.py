@@ -19,11 +19,12 @@ def _hoy(hoy_fijo):
 @pytest.fixture
 def escenario(db, crear_usuario, fabrica):
     ana, beto = crear_usuario("ana.ruiz"), crear_usuario("beto.luna")
+    admin = crear_usuario("admin.jefe", rol="admin")
     ca = fabrica.cliente(ana, "Cliente de Ana")
     cb = fabrica.cliente(beto, "Cliente de Beto")
     pa = fabrica.ciclo(ca, H + D(10))
     pb = fabrica.ciclo(cb, H + D(10))
-    return dict(ana=ana, beto=beto, ca=ca, cb=cb, pa=pa, pb=pb)
+    return dict(ana=ana, beto=beto, admin=admin, ca=ca, cb=cb, pa=pa, pb=pb)
 
 
 def test_cm_solo_ve_su_cartera_en_la_lista(api, auth, escenario):
@@ -54,11 +55,13 @@ def test_cm_no_toca_datos_de_otro_cm(api, auth, escenario, metodo, ruta, cuerpo)
     assert r.status_code in (403, 404), (url, r.status_code, r.text)
 
 
-def test_cm_no_borra_pago_de_otro_cm(api, db, auth, escenario, fabrica):
-    p = fabrica.ciclo(escenario["cb"], H + D(10), pagos=[(100, H)])
+def test_cm_no_borra_pagos_el_admin_si(api, db, auth, escenario, fabrica):
+    p = fabrica.ciclo(escenario["cb"], H + D(10), pagos=[(100, H)], por=escenario["admin"])
     pago = db.scalars(select(Pago).where(Pago.paquete_id == p.id)).one()
-    assert api.delete(f"/api/pagos/{pago.id}", headers=auth(escenario["ana"])).status_code == 404
+    assert api.delete(f"/api/pagos/{pago.id}", headers=auth(escenario["beto"])).status_code == 403
+    assert api.delete(f"/api/pagos/{pago.id}", headers=auth(escenario["ana"])).status_code == 403
     assert db.get(Pago, pago.id) is not None
+    assert api.delete(f"/api/pagos/{pago.id}", headers=auth(escenario["admin"])).status_code == 200
 
 
 def test_admin_ve_todo_y_solo_lectura_no_escribe(api, auth, escenario, crear_usuario):
@@ -141,7 +144,7 @@ def test_filtro_por_quincena_usa_fecha_de_renovacion_de_algun_paquete_vigente(ap
 
 
 def test_pagado_se_suma_de_pagos_y_restante_con_avance(api, auth, escenario):
-    h = auth(escenario["ana"])
+    h = auth(escenario["admin"])
     pid = escenario["pa"].id
     api.post(f"/api/paquetes/{pid}/pagos", headers=h, json={"monto": 500})
     r = api.post(f"/api/paquetes/{pid}/pagos", headers=h, json={"monto": "250.50", "nota": "efectivo"}).json()["paquete"]
@@ -152,7 +155,7 @@ def test_pagado_se_suma_de_pagos_y_restante_con_avance(api, auth, escenario):
 
 
 def test_pago_invalido(api, auth, escenario):
-    h = auth(escenario["ana"])
+    h = auth(escenario["admin"])
     pid = escenario["pa"].id
     assert api.post(f"/api/paquetes/{pid}/pagos", headers=h, json={"monto": 0}).status_code == 422
     assert api.post(f"/api/paquetes/{pid}/pagos", headers=h, json={"monto": -5}).status_code == 422
@@ -160,16 +163,16 @@ def test_pago_invalido(api, auth, escenario):
     assert api.post(f"/api/paquetes/{pid}/pagos", headers=h, json={"monto": 10, "fecha": "2026-10-02"}).status_code == 422
 
 
-def test_borrar_pago_solo_el_mismo_dia_del_autor(api, db, auth, escenario):
-    h = auth(escenario["ana"])
+def test_el_admin_borra_pagos_de_cualquier_fecha(api, db, auth, escenario):
+    h = auth(escenario["admin"])
     pid = escenario["pa"].id
     pago_id = api.post(f"/api/paquetes/{pid}/pagos", headers=h, json={"monto": 100}).json()["pago_id"]
     assert api.delete(f"/api/pagos/{pago_id}", headers=h).status_code == 200
-    antiguo = Pago(paquete_id=pid, monto=Decimal(50), fecha=H, registrado_por=escenario["ana"].id,
+    antiguo = Pago(paquete_id=pid, monto=Decimal(50), fecha=H, registrado_por=escenario["admin"].id,
                    creado_en=dt.datetime(2026, 9, 1, tzinfo=dt.timezone.utc))
     db.add(antiguo)
     db.flush()
-    assert api.delete(f"/api/pagos/{antiguo.id}", headers=h).status_code == 403
+    assert api.delete(f"/api/pagos/{antiguo.id}", headers=h).status_code == 200
 
 
 def test_semaforo_y_estado_efectivo(api, auth, fabrica, escenario):
@@ -187,7 +190,7 @@ def test_semaforo_y_estado_efectivo(api, auth, fabrica, escenario):
 
 
 def test_recordatorio_con_wa_me_y_marcado_de_envio(api, db, auth, escenario):
-    h = auth(escenario["ana"])
+    h = auth(escenario["admin"])
     pid = escenario["pa"].id
     r = api.post(f"/api/paquetes/{pid}/recordatorio", headers=h)
     assert r.status_code == 201
@@ -252,3 +255,67 @@ def test_cambiar_el_inicio_recalcula_renovacion_y_mueve_al_cliente_de_quincena(a
 def test_la_fecha_de_renovacion_ya_no_se_puede_editar_a_mano(api, auth, escenario):
     r = api.patch(f"/api/paquetes/{escenario['pa'].id}", headers=auth(escenario["ana"]), json={"fecha_renovacion": "2027-01-01"})
     assert r.status_code == 200 and r.json()["fecha_renovacion"] == str(H + D(10))
+
+
+def test_el_cm_no_registra_pagos_ni_prorroga_ni_mensaje_de_cobro(api, auth, escenario, fabrica):
+    h = auth(escenario["ana"])
+    pid = escenario["pa"].id
+    assert api.post(f"/api/paquetes/{pid}/pagos", headers=h, json={"monto": 100}).status_code == 403
+    assert api.post(f"/api/paquetes/{pid}/prorroga", headers=h).status_code == 403
+    assert api.post(f"/api/paquetes/{pid}/recordatorio", headers=h).status_code == 403
+    assert api.get(f"/api/paquetes/{pid}/recordatorios", headers=h).status_code == 403
+
+
+def test_la_ficha_del_cm_no_trae_montos_ni_pagos(api, auth, escenario, fabrica):
+    p = fabrica.ciclo(escenario["ca"], H + D(10), costo=1500, pagos=[(500, H)], por=escenario["admin"])
+    cm, adm = auth(escenario["ana"]), auth(escenario["admin"])
+    d = api.get(f"/api/paquetes/{p.id}", headers=cm).json()
+    assert not {"costo", "pagado", "restante", "avance_pct"} & set(d)
+    assert d["pagos"] == [] and d["paquete"] == "Básico" and d["fecha_renovacion"] == str(H + D(10))
+    assert d["semaforo"] and "estado_efectivo" in d and "prorroga_hasta" in d
+    ficha = api.get(f"/api/clientes/{escenario['ca'].id}", headers=cm).json()
+    assert all("costo" not in q for q in ficha["paquetes"] + ficha["historial"])
+    dadm = api.get(f"/api/paquetes/{p.id}", headers=adm).json()
+    assert Decimal(str(dadm["costo"])) == Decimal(1500) and len(dadm["pagos"]) == 1
+
+
+def test_el_tablero_y_los_bloqueos_del_cm_tampoco_traen_montos(api, auth, escenario, fabrica):
+    fabrica.ciclo(escenario["ca"], H - D(1), costo=900)
+    h = auth(escenario["ana"])
+    for b in api.get("/api/bloqueos", headers=h).json():
+        assert "costo" not in b and "restante" not in b
+    tablero = api.get("/api/renovaciones/tablero?anio=2026&mes=10&quincena=ambas", headers=h).json()
+    for col in tablero["columnas"].values():
+        for t in col:
+            assert "costo" not in t and "pagado" not in t
+
+
+def test_el_cm_da_de_alta_con_el_costo_del_catalogo_y_sin_pagos(api, db, auth, escenario):
+    from app.models import CatalogoPaquete
+    basico = db.scalars(select(CatalogoPaquete).where(CatalogoPaquete.nombre == "Básico")).one()
+    basico.costo = Decimal(1234)
+    db.flush()
+    h = auth(escenario["ana"])
+    r = api.post("/api/clientes", headers=h, json={"nombre": "Nuevo del CM",
+                 "paquetes": [{"paquete_id": basico.id, "tipo_id": 1, "costo": 1, "fecha_inicio": str(H)}]})
+    assert r.status_code == 201
+    nuevo = db.scalars(select(PaqueteCliente).join(Cliente).where(Cliente.nombre == "Nuevo del CM")).one()
+    assert nuevo.costo == Decimal(1234)
+    assert db.scalars(select(Pago).where(Pago.paquete_id == nuevo.id)).all() == []
+
+
+def test_el_admin_si_fija_el_costo_al_dar_de_alta(api, db, auth, escenario):
+    h = auth(escenario["admin"])
+    r = api.post("/api/clientes", headers=h, json={"nombre": "Nuevo del admin", "cm_id": escenario["ana"].id,
+                 "paquetes": [{"paquete_id": 1, "tipo_id": 1, "costo": 777, "fecha_inicio": str(H)}]})
+    assert r.status_code == 201
+    nuevo = db.scalars(select(PaqueteCliente).join(Cliente).where(Cliente.nombre == "Nuevo del admin")).one()
+    assert nuevo.costo == Decimal(777)
+
+
+def test_el_costo_del_catalogo_lo_cambia_el_admin(api, auth, escenario):
+    cm, adm = auth(escenario["ana"]), auth(escenario["admin"])
+    assert api.patch("/api/catalogos/paquetes/1", headers=cm, json={"costo": 50}).status_code == 403
+    r = api.patch("/api/catalogos/paquetes/1", headers=adm, json={"costo": 2100})
+    assert r.status_code == 200 and Decimal(str(r.json()["costo"])) == Decimal(2100)
+    assert Decimal(str(api.get("/api/catalogos/paquetes", headers=cm).json()[0]["costo"])) == Decimal(2100)

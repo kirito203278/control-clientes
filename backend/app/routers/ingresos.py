@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.dates import hoy as hoy_mx
-from app.deps import get_current_user
+from app.deps import require_admin
 from app.models import Usuario
 from app.services import reporte_datos
 from app.services.periodos import construir_periodo, quincena_de
@@ -21,7 +21,7 @@ def resolver_periodo(anio: int | None, mes: int | None, quincena: str | None):
 
 @router.get("/ingresos")
 def ingresos(anio: int | None = None, mes: int | None = None, quincena: str | None = None, cm_id: int | None = None,
-             db: Session = Depends(get_db), user: Usuario = Depends(get_current_user)):
+             db: Session = Depends(get_db), user: Usuario = Depends(require_admin)):
     hoy, per = resolver_periodo(anio, mes, quincena)
     datos = reporte_datos.construir(db, user, per, hoy, cm_id)
     salida = {"periodo": datos["periodo"], "totales": datos["resumen"],

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api, ApiError } from '../../api/client'
 import type { CatalogoItem, Paquete } from '../../api/types'
+import { useAuth } from '../../auth/AuthContext'
 import { CampoPassword, ErrorTexto, Modal } from '../../components/ui'
 import { dinero, fecha, hoyIso, sumarDias } from '../../util'
 
@@ -25,11 +26,12 @@ function Botones({ onClose, onOk, okText, disabled, danger }: { onClose: () => v
   )
 }
 
-export function CamposPaquete({ v, set, paquetes, tipos }: {
+export function CamposPaquete({ v, set, paquetes, tipos, sinCosto }: {
   v: { paquete_id: string; tipo_id: string; costo: string; fecha_inicio: string }
   set: (v: { paquete_id: string; tipo_id: string; costo: string; fecha_inicio: string }) => void
-  paquetes: CatalogoItem[]; tipos: CatalogoItem[]
+  paquetes: CatalogoItem[]; tipos: CatalogoItem[]; sinCosto?: boolean
 }) {
+  const elegido = paquetes.find((x) => x.id === Number(v.paquete_id))
   return (
     <>
       <div className="grid-2">
@@ -41,8 +43,13 @@ export function CamposPaquete({ v, set, paquetes, tipos }: {
           <select value={v.tipo_id} onChange={(e) => set({ ...v, tipo_id: e.target.value })}>
             <option value="">Elige…</option>{tipos.map((t) => <option key={t.id} value={t.id}>{t.nombre}</option>)}
           </select></div>
-        <div className="field"><label>Costo</label>
-          <input type="number" min="0" step="0.01" value={v.costo} onChange={(e) => set({ ...v, costo: e.target.value })} /></div>
+        {sinCosto ? (
+          <div className="field"><label>Costo</label>
+            <input type="text" readOnly value={elegido ? 'Lo fija el administrador' : 'Elige un paquete'} />
+            <span className="muted" style={{ fontSize: 12 }}>El costo es el del catálogo; lo ajusta el administrador. Lo pagado empieza en cero.</span></div>
+        ) : (
+          <div className="field"><label>Costo</label>
+            <input type="number" min="0" step="0.01" value={v.costo} onChange={(e) => set({ ...v, costo: e.target.value })} /></div>)}
         <div className="field"><label>Fecha de inicio</label>
           <input type="date" value={v.fecha_inicio} onChange={(e) => set({ ...v, fecha_inicio: e.target.value })} />
           {v.fecha_inicio && <span className="muted" style={{ fontSize: 12 }}>Renueva el {fecha(sumarDias(v.fecha_inicio, 30))} (30 días; se calcula sola).</span>}</div>
@@ -52,24 +59,30 @@ export function CamposPaquete({ v, set, paquetes, tipos }: {
 }
 
 export const paqueteVacio = () => ({ paquete_id: '', tipo_id: '', costo: '', fecha_inicio: hoyIso() })
-export const paqueteCompleto = (v: ReturnType<typeof paqueteVacio>) => !!(v.paquete_id && v.tipo_id && v.costo !== '' && v.fecha_inicio)
-export const paqueteBody = (v: ReturnType<typeof paqueteVacio>) => ({ paquete_id: Number(v.paquete_id), tipo_id: Number(v.tipo_id), costo: Number(v.costo), fecha_inicio: v.fecha_inicio })
+export const paqueteCompleto = (v: ReturnType<typeof paqueteVacio>, sinCosto?: boolean) =>
+  !!(v.paquete_id && v.tipo_id && (sinCosto || v.costo !== '') && v.fecha_inicio)
+export const paqueteBody = (v: ReturnType<typeof paqueteVacio>, sinCosto?: boolean) => ({
+  paquete_id: Number(v.paquete_id), tipo_id: Number(v.tipo_id), fecha_inicio: v.fecha_inicio,
+  ...(sinCosto ? {} : { costo: Number(v.costo) }),
+})
 
 export function AgregarPaqueteModal({ clienteId, onClose, onHecho }: { clienteId: number; onClose: () => void; onHecho: (nuevoId: number) => void }) {
+  const { esCm } = useAuth()
   const cat = useCatalogos()
   const [v, setV] = useState(paqueteVacio())
   const [error, setError] = useState<string | null>(null)
   async function guardar() {
     setError(null)
-    try { const r = await api.post<{ id: number }>(`/clientes/${clienteId}/paquetes`, paqueteBody(v)); onHecho(r.id) }
+    try { const r = await api.post<{ id: number }>(`/clientes/${clienteId}/paquetes`, paqueteBody(v, esCm)); onHecho(r.id) }
     catch (e) { setError(msg(e, 'No se pudo agregar el paquete')) }
   }
   return (
     <Modal title="Agregar paquete" onClose={onClose} width={520}>
-      <p className="muted" style={{ marginTop: 0 }}>Cada paquete tiene su propio costo y pagos. Captura la fecha de <strong>inicio</strong>: la renovación se calcula sola a los 30 días.</p>
-      <CamposPaquete v={v} set={setV} {...cat} />
+      <p className="muted" style={{ marginTop: 0 }}>Captura la fecha de <strong>inicio</strong>: la renovación se calcula sola a los 30 días.
+        {esCm ? ' El costo lo toma del catálogo y lo ajusta el administrador.' : ' Cada paquete tiene su propio costo y pagos.'}</p>
+      <CamposPaquete v={v} set={setV} {...cat} sinCosto={esCm} />
       <ErrorTexto texto={error} />
-      <Botones onClose={onClose} onOk={guardar} okText="Agregar" disabled={!paqueteCompleto(v)} />
+      <Botones onClose={onClose} onOk={guardar} okText="Agregar" disabled={!paqueteCompleto(v, esCm)} />
     </Modal>
   )
 }
@@ -89,12 +102,14 @@ export function EditarPaqueteModal({ p, esAdmin, onClose, onHecho }: { p: Paquet
           <span className="muted" style={{ fontSize: 12 }}>Renueva el {fecha(sumarDias(v.fecha_inicio, 30))} (30 días; se recalcula sola).</span></div>)}
       <div className="callout callout-info">{esAdmin ? 'Como admin puedes corregir capturas erróneas. ' : 'Solo puedes corregir la fecha de inicio: el paquete, el tipo y el costo cambian únicamente al renovar. '}Todo queda en la bitácora.</div>
       <ErrorTexto texto={error} />
-      <Botones onClose={onClose} onOk={guardar} okText="Guardar" disabled={!paqueteCompleto(v)} />
+      <Botones onClose={onClose} onOk={guardar} okText="Guardar" disabled={esAdmin ? !paqueteCompleto(v) : !v.fecha_inicio} />
     </Modal>
   )
 }
 
-export function ConfirmarRenovacionModal({ p, onClose, onHecho }: { p: Paquete; onClose: () => void; onHecho: (r: { renovado_automaticamente: number | null }) => void }) {
+export function ConfirmarRenovacionModal({ p, sinMontos, onClose, onHecho }: {
+  p: Paquete; sinMontos?: boolean; onClose: () => void; onHecho: (r: { renovado_automaticamente: number | null }) => void
+}) {
   const cat = useCatalogos()
   const [cambiar, setCambiar] = useState(false)
   const [paqueteId, setPaqueteId] = useState(String(p.paquete_id))
@@ -108,22 +123,27 @@ export function ConfirmarRenovacionModal({ p, onClose, onHecho }: { p: Paquete; 
 
   async function guardar() {
     setError(null)
-    try { onHecho(await api.post(`/paquetes/${p.id}/confirmar-renovacion`, cambiar ? { paquete_id: Number(paqueteId), tipo_id: Number(tipoId), costo: Number(costo) } : {})) }
+    try { onHecho(await api.post(`/paquetes/${p.id}/confirmar-renovacion`, !sinMontos && cambiar ? { paquete_id: Number(paqueteId), tipo_id: Number(tipoId), costo: Number(costo) } : {})) }
     catch (e) { setError(msg(e, 'No se pudo confirmar')) }
   }
   return (
     <Modal title={`Renovación · ${p.paquete}`} onClose={onClose} width={540}>
       <div className="callout callout-info" style={{ marginTop: 0 }}>
         <strong>{p.prorroga_hasta ? `Se conserva la fecha de renovación original (${fecha(p.fecha_renovacion)}).` : `Hoy (${fecha(hoyIso())}) queda como el inicio del nuevo contrato.`}</strong>
-        {p.restante > 0 ? ` Aún debe ${dinero(p.restante)}: en cuanto pague completo se renueva solo.${enVentana ? ' No hay tolerancia de pago: a las 11:59 pm de hoy, si no ha pagado, se te preguntará por la prórroga.' : ' Si al terminar su contrato no ha pagado, se bloquea y se te preguntará por la prórroga.'}`
+        {sinMontos
+          ? (p.semaforo === 'verde' ? ' Ya está pagado: se renueva en este momento.'
+            : ` Si aún debe, en cuanto se pague completo se renueva solo.${enVentana ? ' No hay tolerancia de pago: a las 11:59 pm de hoy, si no ha pagado, el administrador decidirá la prórroga.' : ' Si al terminar su contrato no ha pagado, se bloquea y lo resuelve el administrador.'}`)
+          : p.restante > 0 ? ` Aún debe ${dinero(p.restante)}: en cuanto pague completo se renueva solo.${enVentana ? ' No hay tolerancia de pago: a las 11:59 pm de hoy, si no ha pagado, se te preguntará por la prórroga.' : ' Si al terminar su contrato no ha pagado, se bloquea y se te preguntará por la prórroga.'}`
           : ' Ya está pagado: se renueva en este momento.'}
       </div>
-      <p style={{ margin: '0 0 8px', fontWeight: 600 }}>¿Con qué paquete renueva?</p>
-      <div className="segmented light full" style={{ marginBottom: 14 }}>
-        <button className={!cambiar ? 'active' : ''} onClick={() => setCambiar(false)}>El mismo ({p.paquete} · {dinero(p.costo)})</button>
-        <button className={cambiar ? 'active' : ''} onClick={() => setCambiar(true)}>Cambiar de paquete</button>
-      </div>
-      {cambiar && (
+      {sinMontos && <p className="muted" style={{ margin: '0 0 8px' }}>Renueva con el <strong>mismo paquete ({p.paquete})</strong>. El cambio de paquete al renovar lo hace el administrador.</p>}
+      {!sinMontos && <p style={{ margin: '0 0 8px', fontWeight: 600 }}>¿Con qué paquete renueva?</p>}
+      {!sinMontos && (
+        <div className="segmented light full" style={{ marginBottom: 14 }}>
+          <button className={!cambiar ? 'active' : ''} onClick={() => setCambiar(false)}>El mismo ({p.paquete} · {dinero(p.costo)})</button>
+          <button className={cambiar ? 'active' : ''} onClick={() => setCambiar(true)}>Cambiar de paquete</button>
+        </div>)}
+      {!sinMontos && cambiar && (
         <>
           <div className="grid-2">
             <div className="field"><label>Paquete nuevo</label>
@@ -136,7 +156,9 @@ export function ConfirmarRenovacionModal({ p, onClose, onHecho }: { p: Paquete; 
           <div className="callout callout-warn">El cambio se aplica cuando la renovación se concrete. Al cambiar de paquete, el conteo de renovaciones se reinicia en 0.</div>
         </>)}
       <ErrorTexto texto={error} />
-      <Botones onClose={onClose} onOk={guardar} okText={p.restante <= 0 ? 'Renovar ahora' : 'Confirmar que va a renovar'} disabled={cambiar && (!costo || !paqueteId || !tipoId)} />
+      <Botones onClose={onClose} onOk={guardar}
+        okText={(sinMontos ? p.semaforo === 'verde' : p.restante <= 0) ? 'Renovar ahora' : 'Confirmar que va a renovar'}
+        disabled={!sinMontos && cambiar && (!costo || !paqueteId || !tipoId)} />
     </Modal>
   )
 }
@@ -199,6 +221,7 @@ export function NoRenovarModal({ p, nombreCliente, onClose, onHecho }: {
 }
 
 export function AgregarClienteModal({ onClose, onHecho, cms }: { onClose: () => void; onHecho: (id: number) => void; cms?: { id: number; nombre: string }[] }) {
+  const { esCm } = useAuth()
   const cat = useCatalogos()
   const [d, setD] = useState({ nombre: '', correo_fb: '', password_fb: '', correo_contacto: '', telefono: '', observaciones: '' })
   const [cmId, setCmId] = useState('')
@@ -210,7 +233,7 @@ export function AgregarClienteModal({ onClose, onHecho, cms }: { onClose: () => 
   async function guardar() {
     setError(null)
     try {
-      const r = await api.post<{ id: number }>('/clientes', { ...d, cm_id: cms ? (cmId ? Number(cmId) : null) : undefined, paquetes: conPaquete ? [paqueteBody(pq)] : [] })
+      const r = await api.post<{ id: number }>('/clientes', { ...d, cm_id: cms ? (cmId ? Number(cmId) : null) : undefined, paquetes: conPaquete ? [paqueteBody(pq, esCm)] : [] })
       onHecho(r.id)
     } catch (e) { setError(msg(e, 'No se pudo crear el cliente')) }
   }
@@ -229,9 +252,9 @@ export function AgregarClienteModal({ onClose, onHecho, cms }: { onClose: () => 
       <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontWeight: 600 }}>
         <input type="checkbox" style={{ width: 'auto' }} checked={conPaquete} onChange={(e) => setConPaquete(e.target.checked)} /> Agregar su primer paquete ahora
       </label>
-      {conPaquete && <div style={{ marginTop: 10 }}><CamposPaquete v={pq} set={setPq} {...cat} /></div>}
+      {conPaquete && <div style={{ marginTop: 10 }}><CamposPaquete v={pq} set={setPq} {...cat} sinCosto={esCm} /></div>}
       <ErrorTexto texto={error} />
-      <Botones onClose={onClose} onOk={guardar} okText="Crear cliente" disabled={!d.nombre.trim() || (conPaquete && !paqueteCompleto(pq))} />
+      <Botones onClose={onClose} onOk={guardar} okText="Crear cliente" disabled={!d.nombre.trim() || (conPaquete && !paqueteCompleto(pq, esCm))} />
     </Modal>
   )
 }

@@ -220,13 +220,22 @@ def reingresar(db: Session, user: Usuario, cliente: Cliente, *, modo: str, paque
     forzar_nuevo = archivo is not None and archivo.archivado_en <= restar_meses(ahora_, s.reingreso_meses)
     hoy = hoy_mx()
 
+    if costo is None or user.rol != "admin":
+        costo = None
+
+    def costo_catalogo(pq_id: int | None):
+        from app.models import CatalogoPaquete
+        pq = db.get(CatalogoPaquete, pq_id) if pq_id is not None else None
+        return pq.costo if pq is not None else None
+
     anterior = None
     if forzar_nuevo:
         if modo == "continuar":
             raise HTTPException(422, f"Pasaron {s.reingreso_meses} meses o más: debes crear un paquete nuevo "
                                      "(el historial anterior se borrará)")
+        costo = costo if costo is not None else costo_catalogo(paquete_id)
         if paquete_id is None or tipo_id is None or costo is None:
-            raise HTTPException(422, "Indica paquete, tipo y costo del paquete nuevo")
+            raise HTTPException(422, "Indica paquete y tipo del paquete nuevo")
         db.execute(delete(PaqueteCliente).where(PaqueteCliente.cliente_id == cliente.id))
         db.expire(cliente, ["paquetes"])
         historial_borrado = True
@@ -240,8 +249,10 @@ def reingresar(db: Session, user: Usuario, cliente: Cliente, *, modo: str, paque
                 raise HTTPException(422, "No hay un paquete anterior que continuar: crea uno nuevo")
             paquete_id, tipo_id = anterior.paquete_id, anterior.tipo_id
             costo = anterior.costo if costo is None else costo
-        elif paquete_id is None or tipo_id is None or costo is None:
-            raise HTTPException(422, "Indica paquete, tipo y costo del paquete nuevo")
+        else:
+            costo = costo if costo is not None else costo_catalogo(paquete_id)
+            if paquete_id is None or tipo_id is None or costo is None:
+                raise HTTPException(422, "Indica paquete y tipo del paquete nuevo")
 
     from app.routers.clientes import validar_catalogos
     if not (modo == "continuar" and anterior is not None):

@@ -71,22 +71,24 @@ def test_cobrado_solo_cuenta_hasta_la_fecha_de_corte(api, db, auth, crear_usuari
     assert t["totales"]["cobrado"] == 3000
 
 
-def test_ingresos_por_cliente_suma_sus_paquetes(api, auth, datos):
-    r = api.get("/api/ingresos?anio=2026&mes=10&quincena=ambas", headers=auth(datos["ana"])).json()
+def test_ingresos_por_cliente_suma_sus_paquetes(api, auth, crear_usuario, datos):
+    adm = auth(crear_usuario("admin.demo", rol="admin"))
+    r = api.get(f"/api/ingresos?anio=2026&mes=10&quincena=ambas&cm_id={datos['ana'].id}", headers=adm).json()
     cli = {c["cliente"]: c for c in r["clientes"]}
     assert list(cli) == ["Cliente A"] and cli["Cliente A"]["paquetes"] == 3
     assert (cli["Cliente A"]["proyeccion"], cli["Cliente A"]["actual"]) == (6000, 1500)
-    assert "por_cm" not in r
 
 
-def test_cm_solo_ve_su_cartera_en_ingresos_y_reportes_aunque_pida_otro_cm(api, auth, datos):
+def test_el_cm_no_entra_a_ingresos_ni_a_reportes(api, auth, datos):
     h = auth(datos["beto"])
-    r = api.get("/api/ingresos?anio=2026&mes=10&quincena=ambas&cm_id=" + str(datos["ana"].id), headers=h).json()
-    assert r["totales"]["proyeccion"] == 1500 and [c["cliente"] for c in r["clientes"]] == ["Cliente B"]
-    rep = api.get("/api/reportes/datos?anio=2026&mes=10&quincena=ambas&cm_id=" + str(datos["ana"].id), headers=h).json()
-    assert {f["cliente"] for f in rep["detalle"]} == {"Cliente B"}
-    assert "Cliente A" not in api.get("/api/reportes/datos?anio=2026&mes=10&quincena=ambas", headers=h).text
-    assert api.get("/api/reportes/excel?anio=2026&mes=10&quincena=ambas", headers=h).content.count(b"Cliente A") == 0
+    for ruta in ("/api/ingresos", "/api/reportes/datos", "/api/reportes/pdf", "/api/reportes/excel"):
+        assert api.get(f"{ruta}?anio=2026&mes=10&quincena=ambas", headers=h).status_code == 403, ruta
+
+
+def test_el_admin_de_solo_lectura_si_descarga_reportes(api, auth, crear_usuario, datos):
+    ro = auth(crear_usuario("lectura.demo", rol="admin", solo_lectura=True))
+    assert api.get("/api/ingresos?anio=2026&mes=10&quincena=ambas", headers=ro).status_code == 200
+    assert api.get("/api/reportes/excel?anio=2026&mes=10&quincena=ambas", headers=ro).status_code == 200
 
 
 def test_admin_puede_filtrar_por_cm(api, auth, crear_usuario, datos):
@@ -117,8 +119,8 @@ def test_reporte_datos_secciones(api, auth, crear_usuario, datos):
     assert d["pendientes"]["por_vencer"] == []
 
 
-def test_endpoints_validan_periodo(api, auth, datos):
-    h = auth(datos["ana"])
+def test_endpoints_validan_periodo(api, auth, crear_usuario, datos):
+    h = auth(crear_usuario("admin.demo", rol="admin"))
     assert api.get("/api/ingresos?mes=13", headers=h).status_code == 422
     assert api.get("/api/ingresos?quincena=3", headers=h).status_code == 422
     assert api.get("/api/reportes/pdf?quincena=x", headers=h).status_code == 422

@@ -10,10 +10,10 @@ from app import bitacora
 from app.config import get_settings
 from app.database import get_db
 from app.dates import ahora, hoy as hoy_mx
-from app.deps import get_current_user, require_writer
+from app.deps import get_current_user, require_admin_write, require_writer
 from app.models import Pago, PaqueteCliente, RecordatorioCliente, Renovacion, Usuario
 from app.routers.clientes import PaqueteNuevo, crear_ciclo, validar_catalogos
-from app.services import bloqueo, ciclos, recordatorios, renovacion
+from app.services import bloqueo, ciclos, recordatorios, renovacion, visibilidad
 from app.services import pagos as pagos_svc
 from app.services.scope import obtener_cliente, obtener_pago, obtener_paquete, paquetes_q
 
@@ -52,7 +52,7 @@ def agregar_paquete(cliente_id: int, datos: PaqueteNuevo, db: Session = Depends(
     if renovacion.vigentes_del_cliente(db, c.id) > 0:
         raise HTTPException(409, "Un cliente tiene un solo paquete. Para cambiar de paquete, hazlo al renovar.")
     bloqueo.exigir_libre(db, c.id, hoy_mx())
-    p = crear_ciclo(db, c, datos)
+    p = crear_ciclo(db, c, datos, user)
     bitacora.registrar_si_admin(db, user, "alta_paquete_admin", {"cliente_id": c.id, "paquete_id": p.id})
     db.commit()
     return {"id": p.id}
@@ -73,13 +73,17 @@ def detalle(paquete_id: int, db: Session = Depends(get_db), user: Usuario = Depe
         sig = db.scalars(paquetes_q(user).where(PaqueteCliente.ciclo_anterior_id == sig.id)).first()
     renov = db.scalars(select(Renovacion).where(Renovacion.ciclo_anterior_id.in_([x.id for x in cadena]))
                        .order_by(Renovacion.fecha.desc())).all()
-    return {**ciclos.paquete_out(p, hoy), "veces_renovado": ciclos.veces_renovado(db, p),
-            "pagos": [pago_out(g, nombres) for g in sorted(p.pagos, key=lambda g: (g.fecha, g.id), reverse=True)],
-            "ciclos": [ciclos.paquete_out(x, hoy) for x in cadena],
+    pagos = [] if visibilidad.oculta_montos(user) else [pago_out(g, nombres)
+                                                       for g in sorted(p.pagos, key=lambda g: (g.fecha, g.id), reverse=True)]
+    renov_out = [] if visibilidad.oculta_montos(user) else None
+    return {**visibilidad.paquete_visible(ciclos.paquete_out(p, hoy), user),
+            "veces_renovado": ciclos.veces_renovado(db, p),
+            "pagos": pagos,
+            "ciclos": visibilidad.paquetes_visibles([ciclos.paquete_out(x, hoy) for x in cadena], user),
             "renovaciones": [{"id": r.id, "fecha": r.fecha, "ciclo_anterior_id": r.ciclo_anterior_id,
                               "ciclo_nuevo_id": r.ciclo_nuevo_id, "costo_anterior": r.costo_anterior,
                               "costo_nuevo": r.costo_nuevo, "paquete_anterior_id": r.paquete_anterior_id,
-                              "paquete_nuevo_id": r.paquete_nuevo_id} for r in renov]}
+                              "paquete_nuevo_id": r.paquete_nuevo_id} for r in renov] if renov_out is None else renov_out}
 
 
 @router.patch("/paquetes/{paquete_id}")
@@ -107,12 +111,12 @@ def editar_paquete(paquete_id: int, datos: PaquetePatch, db: Session = Depends(g
                                                     "despues": {k: str(getattr(p, k)) for k in antes}})
     db.commit()
     db.refresh(p)
-    return ciclos.paquete_out(p, hoy_mx())
+    return visibilidad.paquete_visible(ciclos.paquete_out(p, hoy_mx()), user)
 
 
 @router.post("/paquetes/{paquete_id}/pagos", status_code=status.HTTP_201_CREATED)
 def registrar_pago(paquete_id: int, datos: PagoIn, db: Session = Depends(get_db),
-                   user: Usuario = Depends(require_writer)):
+                   user: Usuario = Depends(require_admin_write)):
     p = obtener_paquete(db, user, paquete_id)
     bloqueo.exigir_libre(db, p.cliente_id, hoy_mx())
     g = pagos_svc.registrar_pago(db, user, p, datos.monto, datos.fecha, datos.nota)
@@ -124,10 +128,8 @@ def registrar_pago(paquete_id: int, datos: PagoIn, db: Session = Depends(get_db)
 
 
 @router.delete("/pagos/{pago_id}")
-def borrar_pago(pago_id: int, db: Session = Depends(get_db), user: Usuario = Depends(require_writer)):
+def borrar_pago(pago_id: int, db: Session = Depends(get_db), user: Usuario = Depends(require_admin_write)):
     g = obtener_pago(db, user, pago_id)
-    if user.rol == "cm" and not (g.registrado_por == user.id and g.creado_en.astimezone(ahora().tzinfo).date() == hoy_mx()):
-        raise HTTPException(403, "Solo puedes borrar tus propios pagos, el mismo día en que los registraste")
     p = obtener_paquete(db, user, g.paquete_id)
     bloqueo.exigir_libre(db, p.cliente_id, hoy_mx())
     bitacora.registrar(db, user, "borrar_pago", {"pago_id": g.id, "paquete_id": p.id, "monto": str(g.monto),
@@ -141,12 +143,12 @@ def borrar_pago(pago_id: int, db: Session = Depends(get_db), user: Usuario = Dep
 
 
 @router.post("/paquetes/{paquete_id}/prorroga")
-def solicitar_prorroga(paquete_id: int, db: Session = Depends(get_db), user: Usuario = Depends(require_writer)):
+def solicitar_prorroga(paquete_id: int, db: Session = Depends(get_db), user: Usuario = Depends(require_admin_write)):
     p = obtener_paquete(db, user, paquete_id)
     renovacion.solicitar_prorroga(db, user, p)
     db.commit()
     db.refresh(p)
-    return ciclos.paquete_out(p, hoy_mx())
+    return visibilidad.paquete_visible(ciclos.paquete_out(p, hoy_mx()), user)
 
 
 def recordatorio_out(r: RecordatorioCliente, telefono: str | None) -> dict:
@@ -155,7 +157,7 @@ def recordatorio_out(r: RecordatorioCliente, telefono: str | None) -> dict:
 
 
 @router.post("/paquetes/{paquete_id}/recordatorio", status_code=status.HTTP_201_CREATED)
-def crear_recordatorio(paquete_id: int, db: Session = Depends(get_db), user: Usuario = Depends(require_writer)):
+def crear_recordatorio(paquete_id: int, db: Session = Depends(get_db), user: Usuario = Depends(require_admin_write)):
     p = obtener_paquete(db, user, paquete_id)
     bloqueo.exigir_libre(db, p.cliente_id, hoy_mx())
     if p.costo - ciclos.pagado_hasta(p) <= 0:
@@ -169,7 +171,7 @@ def crear_recordatorio(paquete_id: int, db: Session = Depends(get_db), user: Usu
 
 
 @router.get("/paquetes/{paquete_id}/recordatorios")
-def listar_recordatorios(paquete_id: int, db: Session = Depends(get_db), user: Usuario = Depends(get_current_user)):
+def listar_recordatorios(paquete_id: int, db: Session = Depends(get_db), user: Usuario = Depends(require_admin_write)):
     p = obtener_paquete(db, user, paquete_id)
     filas = db.scalars(select(RecordatorioCliente).where(RecordatorioCliente.paquete_id == p.id)
                        .order_by(RecordatorioCliente.id.desc())).all()
@@ -177,7 +179,7 @@ def listar_recordatorios(paquete_id: int, db: Session = Depends(get_db), user: U
 
 
 @router.post("/recordatorios/{recordatorio_id}/marcar-enviado")
-def marcar_enviado(recordatorio_id: int, db: Session = Depends(get_db), user: Usuario = Depends(require_writer)):
+def marcar_enviado(recordatorio_id: int, db: Session = Depends(get_db), user: Usuario = Depends(require_admin_write)):
     r = db.get(RecordatorioCliente, recordatorio_id)
     if r is None:
         raise HTTPException(404, "Recordatorio no encontrado")

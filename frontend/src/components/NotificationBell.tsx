@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from '../api/client'
+import { useAuth } from '../auth/AuthContext'
 import type { NotificacionesResp, Notificacion, Recordatorio } from '../api/types'
 import { fechaHora } from '../util'
 import { BotonCopiar, Modal } from './ui'
@@ -7,6 +8,7 @@ import { BotonCopiar, Modal } from './ui'
 const POLL_MS = 45_000
 
 export default function NotificationBell({ onAbrirPaquete }: { onAbrirPaquete?: (clienteId: number, paqueteId: number | null) => void }) {
+  const { esCm } = useAuth()
   const [data, setData] = useState<NotificacionesResp | null>(null)
   const [open, setOpen] = useState(false)
   const [recordatorio, setRecordatorio] = useState<Recordatorio | null>(null)
@@ -76,7 +78,7 @@ export default function NotificationBell({ onAbrirPaquete }: { onAbrirPaquete?: 
               onClick={() => leer(n)}>
               <div>{n.mensaje}</div>
               <div className="muted" style={{ fontSize: 11, marginTop: 3 }}>{fechaHora(n.creado_en)}</div>
-              {n.tipo === 'prorroga_vencida' && n.paquete_id && (
+              {!esCm && n.tipo === 'prorroga_vencida' && n.paquete_id && (
                 <div style={{ marginTop: 6 }} onClick={(e) => e.stopPropagation()}>
                   <button className="btn btn-primary btn-sm" onClick={() => verMensaje(n.paquete_id!)}>Mensaje para el cliente</button>
                 </div>)}

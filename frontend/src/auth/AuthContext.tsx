@@ -9,6 +9,7 @@ interface AuthContextValue {
   logout: () => void
 
   puedeEscribir: boolean
+  esCm: boolean
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
@@ -32,7 +33,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = useCallback(() => { setToken(null); setUser(null) }, [])
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, puedeEscribir: !!user && !(user.rol === 'admin' && user.solo_lectura) }}>
+    <AuthContext.Provider value={{ user, loading, login, logout, puedeEscribir: !!user && !(user.rol === 'admin' && user.solo_lectura), esCm: user?.rol === 'cm' }}>
       {children}
     </AuthContext.Provider>
   )

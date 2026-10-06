@@ -8,7 +8,7 @@ export default function CatalogosView() {
   return (
     <div>
       <h1 className="page-title">Catálogos</h1>
-      <p className="page-sub">Paquetes y tipos que aparecen al capturar un paquete. Lo desactivado deja de ofrecerse, pero no se pierde de los clientes que ya lo tienen.</p>
+      <p className="page-sub">Paquetes (con su costo) y tipos que aparecen al capturar un paquete. Lo desactivado deja de ofrecerse, pero no se pierde de los clientes que ya lo tienen.</p>
       <div className="grid-2" style={{ alignItems: 'start' }}>
         <Lista tabla="paquetes" titulo="Paquetes" /><Lista tabla="tipos" titulo="Tipos" />
       </div>
@@ -30,10 +30,13 @@ function Lista({ tabla, titulo }: { tabla: 'paquetes' | 'tipos'; titulo: string 
       <h2 style={{ margin: '0 0 12px', fontSize: 16 }}>{titulo}</h2>
       {items.map((i) => (
         <div key={i.id} style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8, opacity: i.activo ? 1 : 0.55 }}>
-          <input type="number" aria-label="Orden" style={{ width: 64 }} defaultValue={i.orden} disabled={!puedeEscribir}
+          <input type="number" aria-label="Orden" title="Orden" style={{ width: 56, flexShrink: 0 }} defaultValue={i.orden} disabled={!puedeEscribir}
             onBlur={(e) => Number(e.target.value) !== i.orden && run(() => api.patch(`/catalogos/${tabla}/${i.id}`, { orden: Number(e.target.value) }))} />
-          <input type="text" aria-label="Nombre" defaultValue={i.nombre} disabled={!puedeEscribir}
+          <input type="text" aria-label="Nombre" defaultValue={i.nombre} disabled={!puedeEscribir} style={{ flex: 1, minWidth: 90 }}
             onBlur={(e) => e.target.value.trim() && e.target.value !== i.nombre && run(() => api.patch(`/catalogos/${tabla}/${i.id}`, { nombre: e.target.value }))} />
+          {tabla === 'paquetes' && <input type="number" min="0" step="0.01" aria-label={`Costo de ${i.nombre}`} title="Costo" style={{ width: 100, flexShrink: 0 }}
+            defaultValue={Number(i.costo ?? 0)} disabled={!puedeEscribir}
+            onBlur={(e) => Number(e.target.value) !== Number(i.costo ?? 0) && run(() => api.patch(`/catalogos/${tabla}/${i.id}`, { costo: Number(e.target.value) }))} />}
           {puedeEscribir && <button className="btn btn-secondary btn-sm" onClick={() => run(() => api.patch(`/catalogos/${tabla}/${i.id}`, { activo: !i.activo }))}>{i.activo ? 'Desactivar' : 'Activar'}</button>}
         </div>))}
       {puedeEscribir && (
@@ -41,7 +44,7 @@ function Lista({ tabla, titulo }: { tabla: 'paquetes' | 'tipos'; titulo: string 
           <input type="text" placeholder={`Nuevo ${tabla === 'paquetes' ? 'paquete' : 'tipo'}…`} value={nuevo} onChange={(e) => setNuevo(e.target.value)} />
           <button className="btn btn-primary" disabled={!nuevo.trim()} onClick={() => run(async () => { await api.post(`/catalogos/${tabla}`, { nombre: nuevo }); setNuevo('') })}>Agregar</button>
         </div>)}
-      {tabla === 'paquetes' && <p className="muted" style={{ fontSize: 12, marginBottom: 0 }}>El orden define «subir/bajar de nivel» al renovar.</p>}
+      {tabla === 'paquetes' && <p className="muted" style={{ fontSize: 12, marginBottom: 0 }}>El orden define «subir/bajar de nivel» al renovar. El costo es el que se aplica cuando un CM da de alta ese paquete; puedes corregirlo después en la ficha del cliente.</p>}
       <ErrorTexto texto={error} />
     </div>
   )
