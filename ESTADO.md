@@ -123,3 +123,14 @@ CICLO_DIAS=30, TOLERANCIA_DIAS=3, PRORROGA_MAX_DIAS=15, AVISO_DIAS_ANTES_RENOVAC
 - **Costo en el catálogo de paquetes** (migración 007, columna `catalogo_paquetes.costo`). Cuando un CM da de alta un cliente o un paquete, el costo sale del catálogo y lo pagado empieza en cero; el administrador ajusta el costo en Catálogos o en la ficha del cliente. Un administrador sí puede fijar el costo al dar de alta.
 - **Panel del CM:** Mi cartera (tabla con el mismo formato que la cartera del admin, con filtro Todos / 1ra quincena / 2da quincena y buscador), Renovaciones y No renovados. Se quitaron Ingresos y Reportes, y la lista de clientes salió de la barra lateral.
 - Sin cambios: aislamiento por CM, bloqueo por fecha, 5 días de prórroga, 2 días para decidir, el resto de [S03].
+
+## Reglas confirmadas y ajustes (2026-10-06, segunda tanda)
+- **Eliminar clientes: solo el administrador y solo desde No renovados.** Un cliente activo ya no se borra: primero se marca «no renovó» (así conserva su información 1 año) y después, si se quiere, se elimina. El CM ya no puede borrar paquetes ni clientes: en «No renovó» solo le queda «Conservar en historial».
+- **Baja de un CM:** si todavía tiene clientes, hay que pasarlos a otro CM. Ya no se pueden dejar «por reasignar» al darlo de baja; para repartirlos entre varios, se reasignan antes desde Cartera.
+- **La ventana de decisión también le aparece al administrador:** su panel lleva el mismo aviso de pendientes que el del CM, con acceso directo a cada cliente.
+- **Ingresos y Reportes abren en «mes completo»**; las quincenas quedan como filtro. La proyección y lo cobrado de cada CM son del periodo elegido.
+- **Al mover un cliente de CM, su proyección y lo pagado se van con él** (los reportes agrupan por el CM actual del cliente). Ya funcionaba así; ahora hay una prueba que lo fija.
+- Sin cambios (confirmadas): 30 días por ciclo desde el inicio del contrato; «no renovará» archiva al terminar el contrato; 2 días para decidir cuando el cliente no contesta; prórroga de 5 días que conserva la fecha de renovación original; 1 año en No renovados; reingreso por CM o admin; el ciclo de cobro va por la fecha de contrato de cada cliente, no por el calendario del mes.
+
+### Cuándo aparece «Renovados sin pago»
+Con las reglas vigentes un paquete no renueva debiendo, así que esa columna solo se llena cuando, **después** de renovar, el ciclo cerrado se queda con saldo: porque el administrador corrigió el costo hacia arriba o porque se borró un pago mal capturado. Los datos de ejemplo traen un caso de cada uno (Mueblería Don Rafa y Barbería El Corte). El cliente que confirmó que renovará y aún no paga no sale ahí: está en amarillo, y pasa a «Vencidos sin decisión» cuando se le termina el contrato.

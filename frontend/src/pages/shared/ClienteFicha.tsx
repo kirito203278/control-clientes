@@ -56,7 +56,8 @@ export default function ClienteFicha({ clienteId, paqueteInicial, onChanged, onD
       {!puedeEscribir && hayBloqueo && <div className="callout callout-bad"><strong>Contrato terminado sin decisión.</strong> Tu cuenta es de solo lectura: lo resuelve el CM.</div>}
       {enNoRenovados && <div className="callout callout-warn">Este cliente está en «No renovados» desde el {fecha(ficha.no_renovado_desde)}. Para reactivarlo usa <strong>No renovados → Reingresar</strong>.</div>}
 
-      <DatosCliente ficha={ficha} puedeEscribir={escribe} onGuardado={(f) => { setFicha(f); onChanged(); avisar('Datos guardados') }} onEliminado={onDeleted} />
+      <DatosCliente ficha={ficha} puedeEscribir={escribe} puedeEliminar={user?.rol === 'admin' && puedeEscribir && enNoRenovados}
+        onGuardado={(f) => { setFicha(f); onChanged(); avisar('Datos guardados') }} onEliminado={onDeleted} />
 
       <div className="section-title">Paquetes</div>
       <Paquetes ficha={ficha} paqueteId={paqueteId} setPaqueteId={setPaqueteId} puedeEscribir={puedeEscribir} hayBloqueo={hayBloqueo} recargar={recargarTodo}
@@ -83,7 +84,9 @@ export default function ClienteFicha({ clienteId, paqueteInicial, onChanged, onD
   )
 }
 
-function DatosCliente({ ficha, puedeEscribir, onGuardado, onEliminado }: { ficha: Ficha; puedeEscribir: boolean; onGuardado: (f: Ficha) => void; onEliminado: () => void }) {
+function DatosCliente({ ficha, puedeEscribir, puedeEliminar, onGuardado, onEliminado }: {
+  ficha: Ficha; puedeEscribir: boolean; puedeEliminar: boolean; onGuardado: (f: Ficha) => void; onEliminado: () => void
+}) {
   const base = { nombre: ficha.nombre, correo_fb: ficha.correo_fb ?? '', correo_contacto: ficha.correo_contacto ?? '', telefono: ficha.telefono ?? '', observaciones: ficha.observaciones ?? '' }
   const [d, setD] = useState(base)
   const [nuevaPwd, setNuevaPwd] = useState('')
@@ -139,7 +142,7 @@ function DatosCliente({ ficha, puedeEscribir, onGuardado, onEliminado }: { ficha
           <button className="btn btn-primary" disabled={!sucio || guardando || !d.nombre.trim()} onClick={guardar}>Guardar cambios</button>
           {sucio && <button className="btn btn-ghost" onClick={() => { setD(base); setNuevaPwd(''); setCambiandoPwd(false) }}>Descartar</button>}
           <span className="right" />
-          {!borrando ? <button className="btn btn-ghost btn-sm" onClick={() => setBorrando(true)}>Eliminar cliente…</button> : (
+          {!puedeEliminar ? null : !borrando ? <button className="btn btn-ghost btn-sm" onClick={() => setBorrando(true)}>Eliminar cliente…</button> : (
             <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
               <input type="text" placeholder={`Escribe «${ficha.nombre}»`} value={confirma} onChange={(e) => setConfirma(e.target.value)} style={{ width: 240 }} />
               <button className="btn btn-danger btn-sm" disabled={confirma !== ficha.nombre} onClick={eliminar}>Eliminar</button>

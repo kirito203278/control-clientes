@@ -7,8 +7,8 @@ REPOSITORIO: https://github.com/kirito203278/control-clientes (privado)
 PARTE DE: continuación de docs/BITACORA_SESION.txt (secciones [S01]–[S20]).
           Este archivo sustituye a aquella bitácora donde choquen; todo lo que
           no se menciona aquí sigue igual.
-PRUEBAS: 196 automatizadas, todas en verde (eran 186).
-COMMITS NUEVOS: 1 (sin push; lo sube el usuario).
+PRUEBAS: 199 automatizadas, todas en verde (eran 186).
+COMMITS NUEVOS: 3 (sin push; los sube el usuario).
 ================================================================================
 
 
@@ -222,6 +222,60 @@ al recargar el demo. Solo para desarrollo.
   beto.luna     10000004   CM
   carla.soto    10000005   CM
 Se actualizaron también README.md, COMO_EJECUTAR.md y la prueba del seed.
+
+
+================================================================================
+[C06b] SEGUNDA TANDA: REGLAS REPASADAS CON EL USUARIO
+================================================================================
+El usuario repasó las reglas completas. Casi todas ya estaban implementadas; se
+listan aquí para que no se vuelvan a tocar por error.
+
+YA ESTABA ASÍ (confirmado, no se tocó)
+- 30 días por ciclo, contados desde el inicio del contrato de cada cliente. Todo
+  el ciclo de cobro va por la fecha de contrato, NO por el calendario del mes.
+- «No renovará»: se archiva solo al terminar el contrato y el cliente pasa a No
+  renovados conservando su información.
+- Confirmó que renovará y no paga el día de la renovación: se bloquea ese
+  cliente; al admin se le pregunta por la prórroga; al CM solo le aparece
+  «bloqueado por falta de pago».
+- Con prórroga, el nuevo contrato conserva la fecha de renovación original.
+- Prórroga de 5 días naturales; si no paga, el cliente pasa a No renovados.
+- El cliente que vuelve después: se reingresa desde No renovados, el ciclo
+  empieza ese día y renueva a los 30. Ningún cliente renueva con saldo: si queda
+  debiendo, al terminar su contrato entra otra vez el bloqueo y la prórroga.
+- No contesta en la fecha de corte: ventana con 2 días naturales; sin respuesta,
+  pasa solo a No renovados guardando su información.
+- No renovados: se guardan 1 año.
+- Reingreso: lo pueden hacer el CM y el admin, con el CM que tenía asignado.
+- Reasignar un cliente de un CM a otro: solo el admin, y se va con toda su
+  información (incluido el archivo de no renovados).
+- Al mover un cliente, su proyección y lo pagado se van con él: los reportes
+  agrupan por el CM actual del cliente. Hay prueba nueva que lo fija.
+
+CAMBIOS HECHOS EN ESTA TANDA
+1. Eliminar clientes: solo el admin y SOLO los que están en No renovados
+   (409 si está activo, 403 si lo intenta un CM). Botón «Eliminar…» nuevo en la
+   pantalla de No renovados; el de la ficha solo sale si se cumple la regla.
+2. El CM ya no borra paquetes: en «No renovó» solo le queda «Conservar en
+   historial» (403 en el servidor si manda accion="borrar").
+3. Baja de un CM con clientes: hay que elegir a qué CM pasan todos. Se quitó la
+   opción de dejarlos «por reasignar» (campo `dejar_por_reasignar` eliminado de
+   la API). Para repartirlos entre varios, se reasignan antes desde Cartera.
+4. El aviso de decisiones pendientes ahora también sale en el panel del admin,
+   igual que en el del CM.
+5. Ingresos y Reportes abren en «mes completo»; las quincenas siguen como filtro.
+6. Datos de ejemplo: dos clientes nuevos en «Renovados sin pago» (33 clientes en
+   total, eran 31).
+
+CUÁNDO APARECE «RENOVADOS SIN PAGO»  (la duda del usuario)
+Con las reglas vigentes un paquete no renueva debiendo, así que la columna solo
+se llena cuando el ciclo YA renovado se queda con saldo después:
+  · el admin corrigió el costo hacia arriba después de renovar
+    → ejemplo: Mueblería Don Rafa (Beto), costo 2500, pagado 1800;
+  · se borró un pago mal capturado de un ciclo ya renovado
+    → ejemplo: Barbería El Corte (Carla), costo 1500, pagado 900.
+El cliente que confirmó que renovará y aún no paga NO sale ahí: está en amarillo
+y pasa a «Vencidos sin decisión» cuando se le termina el contrato.
 
 
 ================================================================================

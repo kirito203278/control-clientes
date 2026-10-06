@@ -32,7 +32,7 @@ def test_contrasena_generada_18_caracteres_y_bcrypt():
 def test_seed(db, tmp_path):
     cred = tmp_path / "cred.txt"
     resumen = sembrar(db, credenciales_path=cred)
-    assert resumen == {"usuarios": 5, "clientes": 31}
+    assert resumen == {"usuarios": 5, "clientes": 33}
 
     texto = cred.read_text()
     for u in db.scalars(select(Usuario)):
@@ -49,6 +49,11 @@ def test_seed(db, tmp_path):
     assert len(multi.paquetes) == 1
     ic = db.scalars(select(PaqueteCliente).join(Cliente).where(Cliente.nombre == "Imprenta Central")).one()
     assert ic.restante == 1000 and ic.prorroga_hasta < hoy()
+
+    renovados_sin_pago = [p for p in db.scalars(select(PaqueteCliente).where(PaqueteCliente.estado == "renovado"))
+                          if p.restante > 0]
+    nombres = {p.cliente.nombre for p in renovados_sin_pago}
+    assert {"Mueblería Don Rafa", "Barbería El Corte"} <= nombres
 
 
 def test_seed_se_niega_si_ya_hay_usuarios(db, tmp_path):

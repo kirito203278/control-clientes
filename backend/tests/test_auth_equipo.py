@@ -150,15 +150,16 @@ def test_baja_de_cm_migra_toda_la_cartera_incluidos_no_renovados(api, db, crear_
     assert db.scalars(select(Bitacora).where(Bitacora.accion == "baja_usuario")).one().detalle["clientes_migrados"] == 2
 
 
-def test_baja_con_clientes_exige_destino_o_por_reasignar(api, db, crear_usuario, auth):
+def test_baja_con_clientes_exige_otro_cm_no_se_pueden_dejar_sueltos(api, db, crear_usuario, auth):
     h = auth(crear_usuario("admin.demo", rol="admin"))
-    ana = crear_usuario("ana.ruiz")
+    ana, beto = crear_usuario("ana.ruiz"), crear_usuario("beto.luna")
     c = _cliente(db, ana, "A")
     r = api.post(f"/api/usuarios/{ana.id}/baja", headers=h, json={})
     assert r.status_code == 409 and r.json()["detail"]["code"] == "requiere_destino"
-    assert api.post(f"/api/usuarios/{ana.id}/baja", headers=h, json={"dejar_por_reasignar": True}).status_code == 200
+    assert api.post(f"/api/usuarios/{ana.id}/baja", headers=h, json={"migrar_a_cm_id": None}).status_code == 409
+    assert api.post(f"/api/usuarios/{ana.id}/baja", headers=h, json={"migrar_a_cm_id": beto.id}).status_code == 200
     db.refresh(c)
-    assert c.cm_id is None
+    assert c.cm_id == beto.id
 
 
 def test_baja_sin_clientes_no_pide_destino(api, crear_usuario, auth):

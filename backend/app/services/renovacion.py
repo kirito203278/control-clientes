@@ -155,6 +155,9 @@ def no_renovar(db: Session, user: Usuario, p: PaqueteCliente, *, accion: str, co
         raise HTTPException(409, "Este paquete ya no está vigente")
     cliente, hoy = p.cliente, hoy_mx()
     es_ultimo = vigentes_del_cliente(db, cliente.id, excepto=p.id) == 0
+    if accion == "borrar" and user.rol != "admin":
+        raise HTTPException(403, "Borrar el paquete y eliminar al cliente solo lo hace un administrador, y desde "
+                                 "No renovados. Marca «no renovó» para conservar su información.")
     if accion == "borrar":
         if confirmar_nombre != p.paquete.nombre:
             raise HTTPException(422, f"Escribe el nombre exacto del paquete ({p.paquete.nombre}) para confirmar")

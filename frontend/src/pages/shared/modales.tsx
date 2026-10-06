@@ -166,6 +166,7 @@ export function ConfirmarRenovacionModal({ p, sinMontos, onClose, onHecho }: {
 export function NoRenovarModal({ p, nombreCliente, onClose, onHecho }: {
   p: Paquete; nombreCliente: string; onClose: () => void; onHecho: (r: { cliente_eliminado: boolean; cliente_a_no_renovados: boolean; programado?: boolean }) => void
 }) {
+  const { esCm } = useAuth()
   const [accion, setAccion] = useState<'conservar' | 'borrar'>('conservar')
   const [confirma, setConfirma] = useState('')
   const [preguntaCliente, setPreguntaCliente] = useState(false)
@@ -197,10 +198,11 @@ export function NoRenovarModal({ p, nombreCliente, onClose, onHecho }: {
 
   return (
     <Modal title={`No renovó · ${p.paquete}`} onClose={onClose} width={520}>
-      <div className="segmented light full" style={{ marginBottom: 14 }}>
-        <button className={accion === 'conservar' ? 'active' : ''} onClick={() => setAccion('conservar')}>Conservar en historial</button>
-        <button className={accion === 'borrar' ? 'active' : ''} onClick={() => setAccion('borrar')}>Borrar paquete</button>
-      </div>
+      {!esCm && (
+        <div className="segmented light full" style={{ marginBottom: 14 }}>
+          <button className={accion === 'conservar' ? 'active' : ''} onClick={() => setAccion('conservar')}>Conservar en historial</button>
+          <button className={accion === 'borrar' ? 'active' : ''} onClick={() => setAccion('borrar')}>Borrar paquete</button>
+        </div>)}
       {accion === 'conservar' ? (
         <div className="callout callout-info">
           {p.bloqueado || p.dias_para_renovar < 0

@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.dates import ahora, hoy
 from app.database import get_sessionmaker
-from app.models import (ArchivoNoRenovado, CatalogoPaquete, CatalogoTipo, Cliente, PaqueteCliente, Pago,
+from app.models import (ArchivoNoRenovado, Bitacora, CatalogoPaquete, CatalogoTipo, Cliente, PaqueteCliente, Pago,
                         Renovacion, Usuario)
 from app.security.crypto import encrypt_value
 from app.security.passwords import hash_password
@@ -185,6 +185,24 @@ def sembrar(db: Session, credenciales_path: Path | None = CREDENCIALES_PATH) -> 
     con_historial(carla, "Spa Zen", "Élite", "Dinamita", 4500, 28, previos=2)
     no_renovado(cliente(ana, "Zapatería El Paso"), 30, "Básico", "Normal", 1500)
     no_renovado(cliente(carla, "Papelería Escolar"), 45, "Estándar", "Normal", 2500)
+
+    def renovado_sin_pago(cm, nombre, paquete, tp, costo, pagado, renov_anterior, nota):
+        c = cliente(cm, nombre, obs=nota)
+        viejo = ciclo(c, paquete, tp, costo, renov_anterior, estado="renovado", decision="si",
+                      pagos=[(pagado, renov_anterior - 3)])
+        nuevo = ciclo(c, paquete, tp, costo, renov_anterior + ciclo_dias, anterior=viejo)
+        db.add(Renovacion(ciclo_anterior_id=viejo.id, ciclo_nuevo_id=nuevo.id, paquete_anterior_id=paq[paquete],
+                          paquete_nuevo_id=paq[paquete], costo_anterior=Decimal(costo), costo_nuevo=Decimal(costo),
+                          fecha=H + dt.timedelta(days=renov_anterior), registrado_por=cm.id))
+        db.add(Bitacora(usuario_id=admin.id, accion="editar_paquete",
+                        detalle={"paquete_id": viejo.id, "antes": {"costo": str(pagado)},
+                                 "despues": {"costo": str(costo)}}))
+        return c, viejo, nuevo
+
+    renovado_sin_pago(beto, "Mueblería Don Rafa", "Estándar", "Normal", 2500, 1800, -8,
+                      "El admin corrigió el costo del ciclo anterior después de renovar: quedó con saldo.")
+    renovado_sin_pago(carla, "Barbería El Corte", "Básico", "Normal", 1500, 900, -4,
+                      "Se borró un pago mal capturado de un ciclo ya renovado: quedó con saldo.")
 
     # ---- Mensaje al cliente ya listo para Imprenta Central (su prórroga venció sin pago completo)
     from app import bitacora

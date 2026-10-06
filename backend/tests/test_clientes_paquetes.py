@@ -107,12 +107,25 @@ def test_editar_ficha_y_password_vacio_no_lo_cambia(api, db, auth, escenario):
     assert decrypt_value(c.password_fb_enc) == "Primera1" and c.telefono == "5599998888" and c.observaciones == "nota"
 
 
-def test_borrar_cliente_exige_nombre_exacto(api, db, auth, escenario):
-    h = auth(escenario["ana"])
-    cid = escenario["ca"].id
-    assert api.delete(f"/api/clientes/{cid}?confirmar_nombre=cliente de ana", headers=h).status_code == 422
-    assert api.delete(f"/api/clientes/{cid}?confirmar_nombre=Cliente de Ana", headers=h).status_code == 200
-    assert db.get(Cliente, cid) is None
+def test_solo_el_admin_elimina_y_solo_a_los_que_estan_en_no_renovados(api, db, auth, escenario):
+    cm, adm = auth(escenario["ana"]), auth(escenario["admin"])
+    c = escenario["ca"]
+    assert api.delete(f"/api/clientes/{c.id}?confirmar_nombre=Cliente de Ana", headers=cm).status_code == 403
+    assert api.delete(f"/api/clientes/{c.id}?confirmar_nombre=Cliente de Ana", headers=adm).status_code == 409
+    c.estado = "no_renovado"
+    db.flush()
+    assert api.delete(f"/api/clientes/{c.id}?confirmar_nombre=cliente de ana", headers=adm).status_code == 422
+    assert api.delete(f"/api/clientes/{c.id}?confirmar_nombre=Cliente de Ana", headers=adm).status_code == 200
+    assert db.get(Cliente, c.id) is None
+
+
+def test_el_cm_no_borra_el_paquete_ni_al_cliente_al_marcar_que_no_renovo(api, auth, escenario):
+    cm = auth(escenario["ana"])
+    pid = escenario["pa"].id
+    r = api.post(f"/api/paquetes/{pid}/no-renovar", headers=cm,
+                 json={"accion": "borrar", "confirmar_nombre": "Básico"})
+    assert r.status_code == 403
+    assert api.post(f"/api/paquetes/{pid}/no-renovar", headers=cm, json={"accion": "conservar"}).status_code == 200
 
 
 def test_reasignar_cliente_solo_admin_a_cm_activo(api, db, auth, escenario, crear_usuario):

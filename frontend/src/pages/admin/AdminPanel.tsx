@@ -3,8 +3,8 @@ import { useAuth } from '../../auth/AuthContext'
 import Logo from '../../components/Logo'
 import NotificationBell from '../../components/NotificationBell'
 import { api } from '../../api/client'
-import { useEffect } from 'react'
-import type { UsuarioEquipo } from '../../api/types'
+import { useCallback, useEffect } from 'react'
+import type { Bloqueo, UsuarioEquipo } from '../../api/types'
 import Ingresos from '../shared/Ingresos'
 import NoRenovados from '../shared/NoRenovados'
 import Reportes from '../shared/Reportes'
@@ -25,7 +25,14 @@ export default function AdminPanel() {
   const [refrescoCms, setRefrescoCms] = useState(0)
   const [cmTablero, setCmTablero] = useState('')
   const [cms, setCms] = useState<UsuarioEquipo[]>([])
+  const [pendientes, setPendientes] = useState<Bloqueo[]>([])
   useEffect(() => { api.get<UsuarioEquipo[]>('/usuarios').then((u) => setCms(u.filter((x) => x.rol === 'cm' && x.activo))) }, [refrescoCms])
+  const cargarPendientes = useCallback(() => api.get<Bloqueo[]>('/bloqueos').then(setPendientes).catch(() => undefined), [])
+  useEffect(() => {
+    cargarPendientes()
+    const t = setInterval(cargarPendientes, 60_000)
+    return () => clearInterval(t)
+  }, [cargarPendientes, refrescoCms])
 
   const irACliente = (id: number, paquete: number | null = null) => { setAbrir({ id, paquete }); setVista('cartera') }
   return (
@@ -45,6 +52,13 @@ export default function AdminPanel() {
         <button className="btn btn-ghost-dark" style={{ marginTop: 10 }} onClick={logout}>Cerrar sesión</button>
       </aside>
       <main className="cm-main">
+        {pendientes.length > 0 && (
+          <div className="callout callout-bad" style={{ marginTop: 0 }} role="status">
+            <strong>{pendientes.length === 1 ? 'Hay 1 paquete' : `Hay ${pendientes.length} paquetes`} con el contrato terminado por decidir.</strong> Solo se pausa ese cliente; con los demás se sigue trabajando normal.
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
+              {pendientes.map((b) => <button key={b.id} className="btn btn-secondary btn-sm" onClick={() => irACliente(b.cliente_id, b.id)}>{b.cliente_nombre} · {b.paquete}</button>)}
+            </div>
+          </div>)}
         {vista === 'cartera' && <CarteraView abrirId={abrir?.id ?? null} abrirPaquete={abrir?.paquete ?? null} cmsRefresco={refrescoCms} />}
         {vista === 'renovaciones' && (
           <div>

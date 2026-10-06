@@ -9,7 +9,7 @@ import { BannerPeriodo } from './Ingresos'
 
 export default function Reportes() {
   const { user } = useAuth()
-  const [per, setPer] = useState<PeriodoSel>(periodoInicial)
+  const [per, setPer] = useState<PeriodoSel>(() => periodoInicial('ambas'))
   const [d, setD] = useState<ReporteDatos | null>(null)
   const [descargando, setDescargando] = useState<'pdf' | 'excel' | null>(null)
   const [error, setError] = useState<string | null>(null)

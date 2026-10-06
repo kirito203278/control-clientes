@@ -2,9 +2,9 @@ import { MESES, hoyIso, quincenaActual } from '../util'
 
 export interface PeriodoSel { anio: number; mes: number; quincena: '1' | '2' | 'ambas' }
 
-export function periodoInicial(): PeriodoSel {
+export function periodoInicial(quincena: PeriodoSel['quincena'] = quincenaActual()): PeriodoSel {
   const h = hoyIso()
-  return { anio: Number(h.slice(0, 4)), mes: Number(h.slice(5, 7)), quincena: quincenaActual() }
+  return { anio: Number(h.slice(0, 4)), mes: Number(h.slice(5, 7)), quincena }
 }
 export const periodoQuery = (p: PeriodoSel) => `anio=${p.anio}&mes=${p.mes}&quincena=${p.quincena}`
 

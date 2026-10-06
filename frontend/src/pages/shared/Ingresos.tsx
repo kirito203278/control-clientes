@@ -12,7 +12,7 @@ export function BannerPeriodo({ texto, cerrado }: { texto: string; cerrado: bool
 
 export default function Ingresos({ onAbrirCliente }: { onAbrirCliente?: (id: number) => void }) {
   const { user } = useAuth()
-  const [per, setPer] = useState<PeriodoSel>(periodoInicial)
+  const [per, setPer] = useState<PeriodoSel>(() => periodoInicial('ambas'))
   const [cmFiltro, setCmFiltro] = useState<string>('')
   const [data, setData] = useState<IngresosResp | null>(null)
   const admin = user?.rol === 'admin'

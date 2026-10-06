@@ -202,8 +202,11 @@ def ver_password(cliente_id: int, db: Session = Depends(get_db), user: Usuario =
 
 @router.delete("/{cliente_id}")
 def eliminar(cliente_id: int, confirmar_nombre: str, db: Session = Depends(get_db),
-             user: Usuario = Depends(require_writer)):
+             user: Usuario = Depends(require_admin_write)):
     c = obtener_cliente(db, user, cliente_id)
+    if c.estado != "no_renovado":
+        raise HTTPException(409, "Solo se eliminan clientes que están en No renovados. Si ya no sigue, márcalo "
+                                 "como «no renovó» y después elimínalo desde No renovados.")
     bloqueo.exigir_libre(db, c.id, hoy_mx())
     if confirmar_nombre != c.nombre:
         raise HTTPException(422, "El nombre escrito no coincide con el del cliente")

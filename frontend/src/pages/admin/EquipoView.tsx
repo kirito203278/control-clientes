@@ -116,7 +116,7 @@ function Baja({ u, cms, onClose, onHecho }: { u: UsuarioEquipo; cms: UsuarioEqui
   const [error, setError] = useState<string | null>(null)
   async function enviar() {
     setError(null)
-    try { await api.post(`/usuarios/${u.id}/baja`, { migrar_a_cm_id: destino && destino !== 'por' ? Number(destino) : null, dejar_por_reasignar: destino === 'por' }); onHecho() }
+    try { await api.post(`/usuarios/${u.id}/baja`, { migrar_a_cm_id: destino ? Number(destino) : null }); onHecho() }
     catch (e) { setError(e instanceof ApiError ? e.message : 'No se pudo dar de baja') }
   }
   const necesitaDestino = u.rol === 'cm' && total > 0
@@ -124,10 +124,11 @@ function Baja({ u, cms, onClose, onHecho }: { u: UsuarioEquipo; cms: UsuarioEqui
     <Modal title={`Dar de baja a ${u.nombre}`} onClose={onClose} width={500}>
       {necesitaDestino ? (
         <>
-          <div className="callout callout-warn">Tiene <strong>{total} cliente(s)</strong> ({u.clientes_activos} activos, {u.clientes_no_renovados} en No renovados). Su cartera completa se migra para no perder nada.</div>
-          <div className="field"><label>Migrar su cartera a…</label>
+          <div className="callout callout-warn">Tiene <strong>{total} cliente(s)</strong> ({u.clientes_activos} activos, {u.clientes_no_renovados} en No renovados). No se puede dar de baja dejándolos sueltos: su cartera completa pasa a otro CM, con toda su información.</div>
+          <div className="field"><label>Pasar toda su cartera a…</label>
             <select value={destino} onChange={(e) => setDestino(e.target.value)}>
-              <option value="">Elige un CM…</option>{cms.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}<option value="por">Clientes por reasignar (decidir después)</option></select></div>
+              <option value="">Elige un CM…</option>{cms.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}</select>
+            <span className="muted" style={{ fontSize: 12 }}>¿Quieres repartirlos entre varios CM? Reasígnalos primero desde Cartera y vuelve aquí.</span></div>
         </>) : <p style={{ marginTop: 0 }}>{u.rol === 'cm' ? 'No tiene clientes que migrar.' : 'Dejará de poder entrar al sistema.'} Esta acción queda en la bitácora.</p>}
       <ErrorTexto texto={error} />
       <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 }}>

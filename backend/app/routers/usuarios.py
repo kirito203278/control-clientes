@@ -43,7 +43,6 @@ class ResetIn(BaseModel):
 
 class BajaIn(BaseModel):
     migrar_a_cm_id: int | None = None
-    dejar_por_reasignar: bool = False
 
 
 def _slug(texto: str) -> str:
@@ -125,14 +124,15 @@ def baja(usuario_id: int, datos: BajaIn, db: Session = Depends(get_db),
     else:
         clientes = db.scalars(select(Cliente.id).where(Cliente.cm_id == u.id)).all()
         if clientes:
-            if datos.migrar_a_cm_id is None and not datos.dejar_por_reasignar:
+            if datos.migrar_a_cm_id is None:
                 raise HTTPException(status.HTTP_409_CONFLICT, {
                     "code": "requiere_destino", "clientes": len(clientes),
-                    "mensaje": "El CM tiene clientes: elige a quién migrarlos o déjalos por reasignar"})
-            destino = _cm_activo(db, datos.migrar_a_cm_id) if datos.migrar_a_cm_id is not None else None
-            if destino is not None and destino.id == u.id:
+                    "mensaje": "El CM todavía tiene clientes: elige a qué CM pasan todos. Si quieres repartirlos "
+                               "entre varios, reasígnalos antes desde Cartera y vuelve aquí."})
+            destino = _cm_activo(db, datos.migrar_a_cm_id)
+            if destino.id == u.id:
                 raise HTTPException(422, "El destino no puede ser el mismo CM")
-            nuevo_id = destino.id if destino else None
+            nuevo_id = destino.id
             db.execute(update(Cliente).where(Cliente.id.in_(clientes)).values(cm_id=nuevo_id))
             db.execute(update(ArchivoNoRenovado).where(ArchivoNoRenovado.cliente_id.in_(clientes))
                        .values(cm_id=nuevo_id))
@@ -145,6 +145,6 @@ def baja(usuario_id: int, datos: BajaIn, db: Session = Depends(get_db),
     u.activo = False
     bitacora.registrar(db, admin, "baja_usuario", {
         "usuario_id": u.id, "username": u.username, "rol": u.rol, "clientes_migrados": migrados,
-        "destino_cm_id": datos.migrar_a_cm_id, "por_reasignar": datos.dejar_por_reasignar and migrados > 0})
+        "destino_cm_id": datos.migrar_a_cm_id})
     db.commit()
     return {"ok": True, "clientes_migrados": migrados}

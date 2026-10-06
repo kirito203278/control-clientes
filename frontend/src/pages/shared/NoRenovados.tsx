@@ -9,10 +9,11 @@ import { CamposPaquete, paqueteBody, paqueteCompleto, paqueteVacio, useCatalogos
 interface Info { archivado_en: string; forzar_nuevo: boolean; reingreso_meses: number; purga_meses: number; se_elimina_el: string }
 
 export default function NoRenovados({ onAbrir, onCambio }: { onAbrir: (id: number) => void; onCambio: () => void }) {
-  const { puedeEscribir, user } = useAuth()
+  const { puedeEscribir, user, esCm } = useAuth()
   const [lista, setLista] = useState<ClienteListItem[] | null>(null)
   const [infos, setInfos] = useState<Record<number, Info>>({})
   const [reingresando, setReingresando] = useState<ClienteListItem | null>(null)
+  const [eliminando, setEliminando] = useState<ClienteListItem | null>(null)
   const cargar = useCallback(async () => {
     const l = await api.get<ClienteListItem[]>('/clientes?estado=no_renovado')
     setLista(l)
@@ -32,11 +33,39 @@ export default function NoRenovados({ onAbrir, onCambio }: { onAbrir: (id: numbe
               {user?.rol === 'admin' && <td>{c.cm_nombre ?? 'Por reasignar'}</td>}
               <td>{i ? fecha(i.archivado_en) : '…'}</td><td>{i ? fecha(i.se_elimina_el) : '…'}</td>
               <td>{i && (i.forzar_nuevo ? <span className="badge badge-warn">Paquete nuevo (se borra historial)</span> : <span className="badge badge-good">Puede continuar o crear nuevo</span>)}</td>
-              <td className="num">{puedeEscribir && <button className="btn btn-primary btn-sm" onClick={() => setReingresando(c)}>Reingresar</button>}</td></tr>) })}
+              <td className="num" style={{ whiteSpace: 'nowrap' }}>
+                {puedeEscribir && <button className="btn btn-primary btn-sm" onClick={() => setReingresando(c)}>Reingresar</button>}
+                {puedeEscribir && !esCm && <button className="btn btn-ghost btn-sm" style={{ marginLeft: 6 }} onClick={() => setEliminando(c)}>Eliminar…</button>}
+              </td></tr>) })}
         </tbody></table></div>)}
+      {eliminando && <Eliminar c={eliminando} onClose={() => setEliminando(null)}
+        onHecho={() => { setEliminando(null); cargar(); onCambio() }} />}
       {reingresando && infos[reingresando.id] && <Reingreso c={reingresando} info={infos[reingresando.id]} onClose={() => setReingresando(null)}
         onHecho={() => { setReingresando(null); cargar(); onCambio() }} />}
     </div>
+  )
+}
+
+function Eliminar({ c, onClose, onHecho }: { c: ClienteListItem; onClose: () => void; onHecho: () => void }) {
+  const [confirma, setConfirma] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  async function enviar() {
+    setError(null)
+    try { await api.del(`/clientes/${c.id}?confirmar_nombre=${encodeURIComponent(confirma)}`); onHecho() }
+    catch (e) { setError(e instanceof ApiError ? e.message : 'No se pudo eliminar') }
+  }
+  return (
+    <Modal title={`Eliminar a ${c.nombre}`} onClose={onClose} width={520}>
+      <div className="callout callout-bad" style={{ marginTop: 0 }}>Se borra de forma <strong>permanente</strong>: su ficha, sus paquetes, sus pagos y su historial. No se puede deshacer.
+        Si solo quieres dejar de verlo, no hace falta: los no renovados se guardan solos 1 año y después se eliminan.</div>
+      <div className="field"><label>Escribe «{c.nombre}» para confirmar</label>
+        <input type="text" value={confirma} onChange={(e) => setConfirma(e.target.value)} autoFocus /></div>
+      <ErrorTexto texto={error} />
+      <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 12 }}>
+        <button className="btn btn-secondary" onClick={onClose}>Cancelar</button>
+        <button className="btn btn-danger" disabled={confirma !== c.nombre} onClick={enviar}>Eliminar para siempre</button>
+      </div>
+    </Modal>
   )
 }
 

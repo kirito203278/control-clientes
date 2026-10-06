@@ -205,3 +205,33 @@ def test_excel_las_formulas_calculan_los_mismos_numeros_que_el_json(api, auth, c
     assert pr["I2"].value.startswith("VENCIDA")
     ta = wb["Tasa renovación"]
     assert [ta.cell(ta.max_row, c).value for c in (2, 3)] == [4, 1] and round(ta.cell(ta.max_row, 4).value, 3) == 0.25
+
+
+def test_al_mover_un_cliente_de_cm_su_proyeccion_y_lo_pagado_se_van_con_el(api, auth, crear_usuario, datos):
+    adm = auth(crear_usuario("admin.demo", rol="admin"))
+    url = "/api/ingresos?anio=2026&mes=10&quincena=ambas"
+    antes = {f["cm"]: f for f in api.get(url, headers=adm).json()["por_cm"]}
+    assert antes["Beto"]["proyeccion"] == 1500 and antes["Beto"]["cobrado"] == 1500
+
+    cliente_b = api.get("/api/clientes?estado=activo", headers=adm).json()
+    bid = next(c["id"] for c in cliente_b if c["nombre"] == "Cliente B")
+    assert api.post(f"/api/clientes/{bid}/reasignar", headers=adm, json={"cm_id": datos["ana"].id}).status_code == 200
+
+    despues = {f["cm"]: f for f in api.get(url, headers=adm).json()["por_cm"]}
+    assert despues["Beto"]["proyeccion"] == 0 and despues["Beto"]["cobrado"] == 0
+    assert despues["Ana"]["proyeccion"] == antes["Ana"]["proyeccion"] + 1500
+    assert despues["Ana"]["cobrado"] == antes["Ana"]["cobrado"] + 1500
+
+
+def test_renovado_sin_pago_aparece_en_su_columna_del_tablero(api, auth, crear_usuario, fabrica, hoy_fijo):
+    import datetime as dt
+    hoy_fijo(dt.date(2026, 10, 20))
+    adm_u = crear_usuario("admin.demo", rol="admin")
+    adm = auth(adm_u)
+    cm = crear_usuario("cm.demo")
+    c = fabrica.cliente(cm, "Con saldo tras renovar")
+    viejo = fabrica.ciclo(c, dt.date(2026, 10, 12), costo=2500, estado="renovado", decision="si",
+                          pagos=[(1800, dt.date(2026, 10, 9))], por=adm_u)
+    fabrica.ciclo(c, dt.date(2026, 11, 11), costo=2500, anterior=viejo)
+    r = api.get("/api/renovaciones/tablero?anio=2026&mes=10&quincena=ambas", headers=adm).json()
+    assert viejo.id in [t["id"] for t in r["columnas"]["renovados_sin_pago"]]
