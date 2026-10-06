@@ -11,9 +11,10 @@ from app.config import get_settings
 from app.database import get_db
 from app.dates import hoy as hoy_mx
 from app.deps import get_current_user, require_admin_write, require_writer
-from app.models import (ArchivoNoRenovado, CatalogoPaquete, CatalogoTipo, Cliente, PaqueteCliente, Usuario)
+from app.models import (ArchivoNoRenovado, CatalogoPaquete, Cliente, PaqueteCliente, Usuario)
 from app.security.crypto import decrypt_value, encrypt_value
 from app.services import bloqueo, ciclos, visibilidad
+from app.services.catalogos import validar_catalogos
 from app.services.scope import clientes_q, obtener_cliente
 
 router = APIRouter(prefix="/api/clientes", tags=["clientes"])
@@ -48,14 +49,6 @@ class ClientePatch(BaseModel):
 
 class ReasignarIn(BaseModel):
     cm_id: int | None = None
-
-
-def validar_catalogos(db: Session, paquete_id: int, tipo_id: int) -> None:
-    pq, tp = db.get(CatalogoPaquete, paquete_id), db.get(CatalogoTipo, tipo_id)
-    if pq is None or not pq.activo:
-        raise HTTPException(422, "Paquete inválido o desactivado")
-    if tp is None or not tp.activo:
-        raise HTTPException(422, "Tipo inválido o desactivado")
 
 
 def tipo_id_ok(datos: PaqueteNuevo) -> int:

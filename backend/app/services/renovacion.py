@@ -10,6 +10,7 @@ from app.config import get_settings
 from app.dates import ahora, hoy as hoy_mx
 from app.models import ArchivoNoRenovado, Cliente, PaqueteCliente, Renovacion, Usuario
 from app.services import ciclos, notificar
+from app.services.catalogos import validar_catalogos
 from app.services.periodos import restar_meses
 
 TIPOS_AVISO = ("renovacion_3d", "paquete_vencido")
@@ -257,7 +258,6 @@ def reingresar(db: Session, user: Usuario, cliente: Cliente, *, modo: str, paque
             if paquete_id is None or tipo_id is None or costo is None:
                 raise HTTPException(422, "Indica paquete y tipo del paquete nuevo")
 
-    from app.routers.clientes import validar_catalogos
     if not (modo == "continuar" and anterior is not None):
         validar_catalogos(db, paquete_id, tipo_id)
     nuevo = PaqueteCliente(cliente_id=cliente.id, paquete_id=paquete_id, tipo_id=tipo_id, costo=costo,

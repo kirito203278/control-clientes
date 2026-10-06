@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -25,18 +25,27 @@ def usuario_out(u: Usuario) -> dict:
             "solo_lectura": u.solo_lectura, "activo": u.activo}
 
 
+def _rate_key(request: Request, username: str) -> str:
+    """Rate limit por (IP, usuario): así un tercero no puede bloquear la cuenta
+    de un usuario legítimo fallando a propósito 5 veces con su username."""
+    xff = request.headers.get("x-forwarded-for")
+    ip = xff.split(",")[0].strip() if xff else (request.client.host if request.client else "desconocido")
+    return f"{ip}|{username}"
+
+
 @router.post("/login")
-def login(datos: LoginIn, db: Session = Depends(get_db)):
+def login(datos: LoginIn, request: Request, db: Session = Depends(get_db)):
     username = datos.username.strip().lower()
-    if rate_limit.bloqueado(username):
+    rate_key = _rate_key(request, username)
+    if rate_limit.bloqueado(rate_key):
         raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS,
                             "Demasiados intentos fallidos. Espera 15 minutos e inténtalo de nuevo.")
     user = db.scalars(select(Usuario).where(Usuario.username == username)).first()
     ok = verify_password(datos.password, user.password_hash if user else _HASH_FALSO)
     if not user or not ok or not user.activo:
-        rate_limit.registrar_intento_fallido(username)
+        rate_limit.registrar_intento_fallido(rate_key)
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Usuario o contraseña incorrectos")
-    rate_limit.limpiar_intentos(username)
+    rate_limit.limpiar_intentos(rate_key)
     token = create_access_token(user_id=user.id, rol=user.rol, solo_lectura=user.solo_lectura)
     return {"access_token": token, "token_type": "bearer", "usuario": usuario_out(user)}
 
